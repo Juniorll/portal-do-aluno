@@ -143,7 +143,6 @@
             const target = e.target.closest('a, button'); // Find the nearest interactive element
             if (!target) return; // If the click was not on a button or link, do nothing.
 
-            // Modal closing is a special case that doesn't need preventDefault
             if (target.closest('.modal-close-btn') || e.target.classList.contains('modal-backdrop')) {
                 hideModal();
                 return;
@@ -151,56 +150,22 @@
 
             let actionTaken = false;
 
-            // Check for specific actions and take them
-            if (target.id === 'show-register-link') {
-                actionTaken = true;
-                renderRegisterView();
-            } else if (target.id === 'show-login-link') {
-                actionTaken = true;
-                renderLoginView();
-            } else if (target.closest('.logout-btn')) {
-                actionTaken = true;
-                signOut(auth);
-            } else if (target.id === 'login-student-btn') {
-                actionTaken = true;
-                handleStudentLogin();
-            } else if (target.id === 'search-student-btn') {
-                actionTaken = true;
-                handleStudentSearch();
-            } else if (target.classList.contains('teacher-tab')) {
-                actionTaken = true;
-                handleTabSwitch(target);
-            } else if (target.matches('.approve-btn')) {
-                actionTaken = true;
-                handleTeacherApproval(target.dataset.id, true);
-            } else if (target.matches('.reject-btn')) {
-                actionTaken = true;
-                handleTeacherApproval(target.dataset.id, false);
-            } else if (target.closest('.add-student-btn')) {
-                actionTaken = true;
-                handleStudentModal();
-            } else if (target.closest('.edit-student-btn')) {
-                actionTaken = true;
-                handleStudentModal(target.dataset.id);
-            } else if (target.closest('.delete-student-btn')) {
-                actionTaken = true;
-                handleDeleteStudent(target.dataset.id);
-            } else if (target.closest('.add-quest-btn')) {
-                actionTaken = true;
-                handleQuestModal();
-            } else if (target.closest('.edit-quest-btn')) {
-                actionTaken = true;
-                handleQuestModal(target.dataset.id);
-            } else if (target.closest('.delete-quest-btn')) {
-                actionTaken = true;
-                handleDeleteQuest(target.dataset.id);
-            } else if (target.closest('.grade-quest-btn')) {
-                actionTaken = true;
-                handleGradingModal(target.dataset.id);
-            }
+            if (target.id === 'show-register-link') { actionTaken = true; renderRegisterView(); } 
+            else if (target.id === 'show-login-link') { actionTaken = true; renderLoginView(); } 
+            else if (target.closest('.logout-btn')) { actionTaken = true; signOut(auth); } 
+            else if (target.id === 'login-student-btn') { actionTaken = true; handleStudentLogin(); } 
+            else if (target.id === 'search-student-btn') { actionTaken = true; handleStudentSearch(); } 
+            else if (target.classList.contains('teacher-tab')) { actionTaken = true; handleTabSwitch(target); } 
+            else if (target.matches('.approve-btn')) { actionTaken = true; handleTeacherApproval(target.dataset.id, true); } 
+            else if (target.matches('.reject-btn')) { actionTaken = true; handleTeacherApproval(target.dataset.id, false); } 
+            else if (target.closest('.add-student-btn')) { actionTaken = true; handleStudentModal(); } 
+            else if (target.closest('.edit-student-btn')) { actionTaken = true; handleStudentModal(target.dataset.id); } 
+            else if (target.closest('.delete-student-btn')) { actionTaken = true; handleDeleteStudent(target.dataset.id); } 
+            else if (target.closest('.add-quest-btn')) { actionTaken = true; handleQuestModal(); } 
+            else if (target.closest('.edit-quest-btn')) { actionTaken = true; handleQuestModal(target.dataset.id); } 
+            else if (target.closest('.delete-quest-btn')) { actionTaken = true; handleDeleteQuest(target.dataset.id); } 
+            else if (target.closest('.grade-quest-btn')) { actionTaken = true; handleGradingModal(target.dataset.id); }
             
-            // Only prevent default if we actually handled the click.
-            // This allows the submit button's default behavior (triggering a 'submit' event) to proceed.
             if (actionTaken) {
                 e.preventDefault();
             }
@@ -223,11 +188,14 @@
                 const studentId = target.dataset.studentId;
                 renderStudentLeaderboard(target.value, studentId);
             }
+             if (target.name === 'message-type') {
+                const container = document.getElementById('student-select-container');
+                container.style.display = e.target.value === 'personal' ? 'block' : 'none';
+            }
         }
         
         // --- HANDLER IMPLEMENTATIONS ---
         
-        // --- Login, Register, Logout & Approval ---
         async function handleTeacherLogin(form) {
              const email = form.querySelector('#teacher-email').value;
              const password = form.querySelector('#teacher-password').value;
@@ -290,7 +258,6 @@
             showAlert(`Mestre ${approve ? 'aprovado' : 'rejeitado'}!`);
         }
 
-        // --- Teacher Dashboard ---
         function handleTabSwitch(tabElement) {
             document.querySelectorAll('.teacher-tab').forEach(tab => tab.classList.remove('active'));
             document.querySelectorAll('.teacher-tab-content').forEach(content => content.classList.remove('active'));
@@ -300,14 +267,12 @@
             const contentEl = document.getElementById(`tab-content-${tabName}`);
             contentEl.classList.add('active');
 
-            if (contentEl.innerHTML.trim() === '') { // Lazy load content
+            if (contentEl.innerHTML.trim() === '') {
                 if (tabName === 'students') renderStudentsTab();
                 if (tabName === 'quests') renderQuestsTab();
                 if (tabName === 'messages') renderMessagesTab();
             }
         }
-        
-        // --- CRUD & Form Handlers ---
         
         async function handleStudentFormSubmit(form) {
             const id = form.dataset.id;
@@ -335,7 +300,6 @@
             if (!window.confirm('Tem certeza que deseja remover este Dev? Todas as suas notas serão perdidas.')) return;
             try {
                 await deleteDoc(doc(db, "students", studentId));
-                // Optionally, also delete their submissions
                 showAlert('Dev removido com sucesso.');
             } catch (error) { showAlert(`Erro ao remover: ${error.message}`, 'error'); }
         }
@@ -443,7 +407,6 @@
         
         // --- VIEW & COMPONENT RENDERING (The HTML Generators) ---
         
-        // --- Main Views ---
         async function renderLoginView() {
             const html = `
                 <div id="login-view">
@@ -644,15 +607,19 @@
                 </div>
                 <div id="students-list" class="glass-effect p-4 rounded-lg">Carregando...</div>`;
             
-            const q = query(collection(db, "students"), where("teacherId", "==", currentTeacher.uid), orderBy("name"));
+            const q = query(collection(db, "students"), where("teacherId", "==", currentTeacher.uid));
             const unsub = onSnapshot(q, (snapshot) => {
                 const listContainer = document.getElementById('students-list');
                 if(!listContainer) return;
+
                 if(snapshot.empty){
                     listContainer.innerHTML = '<p class="text-center text-gray-400">Nenhum Dev cadastrado ainda.</p>';
                     return;
                 }
-                const tableRows = snapshot.docs.map(doc => {
+                
+                const sortedDocs = snapshot.docs.sort((a, b) => a.data().name.localeCompare(b.data().name));
+
+                const tableRows = sortedDocs.map(doc => {
                     const student = {id: doc.id, ...doc.data()};
                     return `
                         <tr class="bg-gray-800 border-b border-gray-700">
@@ -693,7 +660,7 @@
                 </div>
                 <div id="quests-list" class="space-y-4">Carregando...</div>`;
 
-            const q = query(collection(db, "quests"), where("teacherId", "==", currentTeacher.uid), orderBy("endDate", "desc"));
+            const q = query(collection(db, "quests"), where("teacherId", "==", currentTeacher.uid));
             const unsub = onSnapshot(q, (snapshot) => {
                 const listContainer = document.getElementById('quests-list');
                 if(!listContainer) return;
@@ -701,7 +668,10 @@
                     listContainer.innerHTML = '<p class="text-center text-gray-400">Nenhuma Quest criada ainda.</p>';
                     return;
                 }
-                listContainer.innerHTML = snapshot.docs.map(doc => {
+                
+                const sortedDocs = snapshot.docs.sort((a, b) => b.data().endDate.toDate() - a.data().endDate.toDate());
+
+                listContainer.innerHTML = sortedDocs.map(doc => {
                     const quest = {id: doc.id, ...doc.data()};
                     return `
                         <div class="glass-effect p-4 rounded-lg flex flex-col md:flex-row justify-between items-start md:items-center">
@@ -737,7 +707,7 @@
                             <label><input type="radio" name="message-type" value="personal" class="mr-2">Pessoal (para um Dev)</label>
                         </div>
                     </div>
-                    <div id="student-select-container" class="hidden">
+                    <div id="student-select-container" style="display:none;">
                         <label for="message-student-select" class="block mb-2 text-sm font-medium">Selecione o Dev</label>
                         <select id="message-student-select" class="w-full bg-gray-800 border border-gray-600 rounded-lg p-2"></select>
                     </div>
@@ -751,13 +721,6 @@
                 </form>
             `;
             
-            document.querySelectorAll('input[name="message-type"]').forEach(radio => {
-                radio.addEventListener('change', (e) => {
-                    const container = document.getElementById('student-select-container');
-                    container.style.display = e.target.value === 'personal' ? 'block' : 'none';
-                });
-            });
-
             const q = query(collection(db, "students"), where("teacherId", "==", currentTeacher.uid), orderBy("name"));
             const snapshot = await getDocs(q);
             const select = document.getElementById('message-student-select');
@@ -771,9 +734,11 @@
             const timelineContainer = document.getElementById('student-timeline');
             if(!timelineContainer) return;
             
-            const questsQuery = query(collection(db, "quests"), where("turmas", "array-contains", studentTurma), orderBy("endDate", "desc"));
+            const questsQuery = query(collection(db, "quests"), where("turmas", "array-contains", studentTurma));
             const questsSnapshot = await getDocs(questsQuery);
             
+            const sortedQuests = questsSnapshot.docs.sort((a,b) => b.data().endDate.toDate() - a.data().endDate.toDate());
+
             const submissionsQuery = query(collection(db, "submissions"), where("studentId", "==", studentId));
             const submissionsSnapshot = await getDocs(submissionsQuery);
             const studentSubmissions = {};
@@ -782,12 +747,12 @@
                 studentSubmissions[data.questId] = { score: data.score, status: data.status };
             });
             
-            if(questsSnapshot.empty){
+            if(sortedQuests.length === 0){
                 timelineContainer.innerHTML = '<p class="text-gray-400">Nenhuma quest foi atribuída para sua turma ainda.</p>';
                 return;
             }
 
-            timelineContainer.innerHTML = questsSnapshot.docs.map(doc => {
+            timelineContainer.innerHTML = sortedQuests.map(doc => {
                 const quest = doc.data();
                 const questId = doc.id;
                 const submission = studentSubmissions[questId];
@@ -852,9 +817,9 @@
 
             let q;
             if (filter === 'general') {
-                q = query(collection(db, "students"), orderBy('totalXP', 'desc'));
+                q = query(collection(db, "students"));
             } else {
-                q = query(collection(db, "students"), where('turma', '==', filter), orderBy('totalXP', 'desc'));
+                q = query(collection(db, "students"), where('turma', '==', filter));
             }
 
             const snapshot = await getDocs(q);
@@ -862,15 +827,17 @@
                 list.innerHTML = '<li>Nenhum dev no ranking ainda.</li>';
                 return;
             }
+            
+            const sortedDocs = snapshot.docs.sort((a,b) => (b.data().totalXP || 0) - (a.data().totalXP || 0));
 
-            list.innerHTML = snapshot.docs.map((doc, index) => {
+            list.innerHTML = sortedDocs.map((doc, index) => {
                 const student = doc.data();
                 const isCurrentUser = doc.id === currentStudentId;
                 const highlightClass = isCurrentUser ? 'bg-cyan-500 bg-opacity-30' : '';
                 return `
                     <li class="flex justify-between items-center p-2 rounded-lg ${highlightClass}">
                         <span>${index + 1}. ${student.name}</span>
-                        <span class="font-bold text-lime-400">${student.totalXP} XP</span>
+                        <span class="font-bold text-lime-400">${student.totalXP || 0} XP</span>
                     </li>
                 `;
             }).join('');

@@ -64,13 +64,12 @@
 
         // --- IMPORTANT: PASTE YOUR FIREBASE CONFIGURATION HERE ---
         const firebaseConfig = {
-  apiKey: "AIzaSyDv0qbKmHe3CKNMez7A1YyBN4ZXWhNqaXo",
-  authDomain: "portal-de-notas-gamificado.firebaseapp.com",
-  projectId: "portal-de-notas-gamificado",
-  storageBucket: "portal-de-notas-gamificado.firebasestorage.app",
-  messagingSenderId: "379073119299",
-  appId: "1:379073119299:web:d9655747ce1d865a3fc0f6",
-  measurementId: "G-HM5WXQ13FW"
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_AUTH_DOMAIN",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_STORAGE_BUCKET",
+            messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+            appId: "YOUR_APP_ID"
         };
         // ---------------------------------------------------------
 
@@ -308,7 +307,7 @@
                 difficulty: form.querySelector('#quest-difficulty').value,
                 maxXp: parseInt(form.querySelector('#quest-xp').value, 10),
                 turmas: form.querySelector('#quest-turmas').value.split(',').map(t => t.trim()),
-                endDate: Timestamp.fromDate(new Date(form.querySelector('#quest-end-date').value)),
+                endDate: Timestamp.fromDate(new Date(form.querySelector('#quest-end-date').value.replace(/-/g, '\/'))),
                 teacherId: currentTeacher.uid
             };
 
@@ -332,7 +331,6 @@
             if (!window.confirm('Tem certeza que deseja remover esta Quest?')) return;
             try {
                 await deleteDoc(doc(db, "quests", questId));
-                // Note: this does not remove submissions, which might be desired
                 showAlert('Quest removida com sucesso.');
             } catch (error) { showAlert(`Erro ao remover a Quest: ${error.message}`, 'error'); }
         }
@@ -343,28 +341,29 @@
             const batch = writeBatch(db);
             let changesCount = 0;
 
-            inputs.forEach(input => {
+            for (const input of inputs) {
                 const studentId = input.dataset.studentId;
                 const newScore = parseInt(input.value, 10);
-                const originalScore = parseInt(input.dataset.originalScore, 10);
 
-                if (!isNaN(newScore) && newScore !== originalScore) {
-                    changesCount++;
-                    const submissionRef = doc(db, "submissions", `${studentId}_${questId}`);
+                if (!isNaN(newScore)) {
+                    const submissionId = `${studentId}_${questId}`;
+                    const submissionRef = doc(db, "submissions", submissionId);
                     const studentRef = doc(db, "students", studentId);
-                    
-                    batch.set(submissionRef, {
-                        studentId,
-                        questId,
-                        score: newScore,
-                        status: 'completed',
-                        teacherId: currentTeacher.uid
-                    }, { merge: true });
 
-                    const xpDifference = newScore - originalScore;
-                    batch.update(studentRef, { totalXP: increment(xpDifference) });
+                    const submissionDoc = await getDoc(submissionRef);
+                    const originalScore = submissionDoc.exists() ? submissionDoc.data().score : 0;
+                    
+                    if(newScore !== originalScore) {
+                        changesCount++;
+                        batch.set(submissionRef, {
+                            studentId, questId, score: newScore, status: 'completed', teacherId: currentTeacher.uid
+                        }, { merge: true });
+
+                        const xpDifference = newScore - originalScore;
+                        batch.update(studentRef, { totalXP: increment(xpDifference) });
+                    }
                 }
-            });
+            }
 
             if (changesCount === 0) return showAlert('Nenhuma nota foi alterada.');
 
@@ -403,7 +402,7 @@
         
         // --- VIEW & COMPONENT RENDERING (The HTML Generators) ---
         
-        // --- Login & Main Views ---
+        // --- Main Views ---
         async function renderLoginView() {
             const html = `
                 <div id="login-view">
@@ -530,8 +529,8 @@
                         </nav>
                     </div>
                     <div id="tab-content-students" class="teacher-tab-content active"></div>
-                    <div id="tab-content-quests" class="teacher-tab-content"></div>
-                    <div id="tab-content-messages" class="teacher-tab-content"></div>`;
+                    <div id="tab-content-quests" class="teacher-tab-content" style="display:none"></div>
+                    <div id="tab-content-messages" class="teacher-tab-content" style="display:none"></div>`;
             }
 
             const viewHTML = `
@@ -591,12 +590,358 @@
             loadPersonalMessages(studentId);
             renderStudentLeaderboard('general', studentId);
         }
+        
+        async function renderStudentsTab() { 
+            const container = document.getElementById('tab-content-students');
+            if(!container) return;
+            container.innerHTML = `
+                <div class="flex justify-between items-center mb-4">
+                  <h2 class="font-game text-xl text-cyan-400">Devs (Alunos)</h2>
+                  <div>
+                    <button class="add-student-btn bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg"><i class="fas fa-plus mr-2"></i>Adicionar Dev</button>
+                  </div>
+                </div>
+                <div id="students-list" class="glass-effect p-4 rounded-lg">Carregando...</div>`;
+            
+            const q = query(collection(db, "students"), where("teacherId", "==", currentTeacher.uid), orderBy("name"));
+            const unsub = onSnapshot(q, (snapshot) => {
+                const listContainer = document.getElementById('students-list');
+                if(!listContainer) return;
+                if(snapshot.empty){
+                    listContainer.innerHTML = '<p class="text-center text-gray-400">Nenhum Dev cadastrado ainda.</p>';
+                    return;
+                }
+                const tableRows = snapshot.docs.map(doc => {
+                    const student = {id: doc.id, ...doc.data()};
+                    return `
+                        <tr class="bg-gray-800 border-b border-gray-700">
+                            <td class="px-6 py-4 font-medium text-white whitespace-nowrap">${student.name}</td>
+                            <td class="px-6 py-4">${student.matricula}</td>
+                            <td class="px-6 py-4">${student.turma}</td>
+                            <td class="px-6 py-4 text-right space-x-4">
+                                <button data-id="${student.id}" class="edit-student-btn text-blue-400 hover:text-blue-300"><i class="fas fa-pencil-alt"></i></button>
+                                <button data-id="${student.id}" class="delete-student-btn text-red-500 hover:text-red-400"><i class="fas fa-trash"></i></button>
+                            </td>
+                        </tr>`;
+                }).join('');
+                listContainer.innerHTML = `
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full text-sm text-left">
+                            <thead class="text-xs text-gray-300 uppercase bg-gray-700">
+                                <tr>
+                                    <th scope="col" class="px-6 py-3">Nome</th><th scope="col" class="px-6 py-3">Matrícula</th>
+                                    <th scope="col" class="px-6 py-3">Turma</th><th scope="col" class="px-6 py-3 text-right">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody>${tableRows}</tbody>
+                        </table>
+                    </div>`;
+            });
+            unsubscribeListeners.push(unsub);
+        }
+        
+        async function renderQuestsTab() {
+            const container = document.getElementById('tab-content-quests');
+            if(!container) return;
+            container.innerHTML = `
+                <div class="flex justify-between items-center mb-4">
+                  <h2 class="font-game text-xl text-cyan-400">Quests (Atividades)</h2>
+                  <div>
+                    <button class="add-quest-btn bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg"><i class="fas fa-plus mr-2"></i>Criar Quest</button>
+                  </div>
+                </div>
+                <div id="quests-list" class="space-y-4">Carregando...</div>`;
 
-        // --- ALL THE OTHER RENDER AND HANDLER FUNCTIONS GO HERE ---
-        // (Full implementation of student management, quest management, messaging, etc.)
-        // This includes renderStudentsTab, renderQuestsTab, renderMessagesTab,
-        // all modal handlers, form submit handlers, and delete handlers.
-        // For brevity, they are omitted here but are required for full functionality.
+            const q = query(collection(db, "quests"), where("teacherId", "==", currentTeacher.uid), orderBy("endDate", "desc"));
+            const unsub = onSnapshot(q, (snapshot) => {
+                const listContainer = document.getElementById('quests-list');
+                if(!listContainer) return;
+                if(snapshot.empty) {
+                    listContainer.innerHTML = '<p class="text-center text-gray-400">Nenhuma Quest criada ainda.</p>';
+                    return;
+                }
+                listContainer.innerHTML = snapshot.docs.map(doc => {
+                    const quest = {id: doc.id, ...doc.data()};
+                    return `
+                        <div class="glass-effect p-4 rounded-lg flex flex-col md:flex-row justify-between items-start md:items-center">
+                            <div>
+                                <h3 class="font-bold text-lg text-cyan-300">${quest.title}</h3>
+                                <p class="text-sm text-gray-400">${quest.description}</p>
+                                <div class="text-xs text-gray-500 mt-2">
+                                    <span>XP: ${quest.maxXp}</span> | <span>Turmas: ${quest.turmas.join(', ')}</span> | <span>Prazo: ${quest.endDate.toDate().toLocaleDateString('pt-BR')}</span>
+                                </div>
+                            </div>
+                            <div class="flex space-x-2 mt-4 md:mt-0">
+                                <button data-id="${quest.id}" class="grade-quest-btn bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-1 px-3 rounded-lg"><i class="fas fa-award mr-2"></i>Lançar XP</button>
+                                <button data-id="${quest.id}" class="edit-quest-btn text-blue-400 hover:text-blue-300 p-2"><i class="fas fa-pencil-alt"></i></button>
+                                <button data-id="${quest.id}" class="delete-quest-btn text-red-500 hover:text-red-400 p-2"><i class="fas fa-trash"></i></button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            });
+            unsubscribeListeners.push(unsub);
+        }
+        
+        async function renderMessagesTab() {
+            const container = document.getElementById('tab-content-messages');
+            if(!container) return;
+            container.innerHTML = `
+                <h2 class="font-game text-xl text-cyan-400 mb-4">Enviar Mensagem</h2>
+                <form id="message-form" class="glass-effect p-6 rounded-lg space-y-4">
+                    <div>
+                        <label class="block mb-2 text-sm font-medium">Tipo de Mensagem</label>
+                        <div class="flex items-center space-x-4">
+                            <label><input type="radio" name="message-type" value="general" checked class="mr-2">Geral (para todos)</label>
+                            <label><input type="radio" name="message-type" value="personal" class="mr-2">Pessoal (para um Dev)</label>
+                        </div>
+                    </div>
+                    <div id="student-select-container" class="hidden">
+                        <label for="message-student-select" class="block mb-2 text-sm font-medium">Selecione o Dev</label>
+                        <select id="message-student-select" class="w-full bg-gray-800 border border-gray-600 rounded-lg p-2"></select>
+                    </div>
+                    <div>
+                        <label for="message-content" class="block mb-2 text-sm font-medium">Sua Mensagem</label>
+                        <textarea id="message-content" rows="4" class="w-full bg-gray-800 border border-gray-600 rounded-lg p-2" required></textarea>
+                    </div>
+                    <div class="text-right">
+                        <button type="submit" class="bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded-lg">Enviar Mensagem</button>
+                    </div>
+                </form>
+            `;
+            
+            document.querySelectorAll('input[name="message-type"]').forEach(radio => {
+                radio.addEventListener('change', (e) => {
+                    const container = document.getElementById('student-select-container');
+                    container.style.display = e.target.value === 'personal' ? 'block' : 'none';
+                });
+            });
+
+            const q = query(collection(db, "students"), where("teacherId", "==", currentTeacher.uid), orderBy("name"));
+            const snapshot = await getDocs(q);
+            const select = document.getElementById('message-student-select');
+            select.innerHTML = '<option value="">-- Selecione --</option>';
+            snapshot.forEach(doc => {
+                select.innerHTML += `<option value="${doc.id}">${doc.data().name}</option>`;
+            });
+        }
+        
+        async function renderStudentTimeline(studentId, studentTurma) {
+            const timelineContainer = document.getElementById('student-timeline');
+            if(!timelineContainer) return;
+            
+            const questsQuery = query(collection(db, "quests"), where("turmas", "array-contains", studentTurma), orderBy("endDate", "desc"));
+            const questsSnapshot = await getDocs(questsQuery);
+            
+            const submissionsQuery = query(collection(db, "submissions"), where("studentId", "==", studentId));
+            const submissionsSnapshot = await getDocs(submissionsQuery);
+            const studentSubmissions = {};
+            submissionsSnapshot.forEach(doc => {
+                const data = doc.data();
+                studentSubmissions[data.questId] = { score: data.score, status: data.status };
+            });
+            
+            if(questsSnapshot.empty){
+                timelineContainer.innerHTML = '<p class="text-gray-400">Nenhuma quest foi atribuída para sua turma ainda.</p>';
+                return;
+            }
+
+            timelineContainer.innerHTML = questsSnapshot.docs.map(doc => {
+                const quest = doc.data();
+                const questId = doc.id;
+                const submission = studentSubmissions[questId];
+                
+                let icon = 'fa-hourglass-half text-yellow-400';
+                let statusText = 'Pendente';
+                let xpText = `Vale até ${quest.maxXp} XP`;
+
+                if (submission) {
+                    icon = 'fa-check-circle text-green-400';
+                    statusText = 'Concluída';
+                    xpText = `Você ganhou ${submission.score} XP`;
+                } else if (quest.endDate.toDate() < new Date()) {
+                    icon = 'fa-times-circle text-red-400';
+                    statusText = 'Não Entregue';
+                    xpText = `Você perdeu ${quest.maxXp} XP`;
+                }
+
+                return `
+                    <div class="flex items-start space-x-4">
+                        <div class="flex flex-col items-center flex-shrink-0">
+                            <div class="w-12 h-12 rounded-full bg-gray-700 flex items-center justify-center">
+                                <i class="fas ${icon} text-2xl"></i>
+                            </div>
+                            <div class="w-0.5 h-16 bg-gray-600 mt-2"></div>
+                        </div>
+                        <div class="glass-effect p-4 rounded-lg flex-1">
+                            <div class="flex justify-between items-center">
+                                <h3 class="font-bold text-lg text-cyan-300">${quest.title}</h3>
+                                <span class="text-sm font-semibold text-lime-400 whitespace-nowrap">${xpText}</span>
+                            </div>
+                            <p class="text-gray-400 text-sm mt-1">${quest.description}</p>
+                            <div class="text-xs text-gray-500 mt-3">
+                                <span>Dificuldade: ${quest.difficulty}</span> | 
+                                <span>Prazo: ${quest.endDate.toDate().toLocaleDateString('pt-BR')}</span>
+                            </div>
+                        </div>
+                    </div>`;
+            }).join('');
+        }
+
+        async function loadPersonalMessages(studentId) {
+            const box = document.getElementById('personal-message-box');
+            if(!box) return;
+
+            const q = query(collection(db, "messages"), where("studentId", "==", studentId), orderBy("timestamp", "desc"));
+            const unsub = onSnapshot(q, (snapshot) => {
+                if(!snapshot.empty) {
+                    const message = snapshot.docs[0].data(); // Show the latest
+                    box.innerHTML = `
+                        <h3 class="font-bold text-purple-300"><i class="fas fa-envelope mr-2"></i> Mensagem do seu Mestre:</h3>
+                        <p class="italic">"${message.content}"</p>`;
+                    box.classList.remove('hidden');
+                } else {
+                    box.classList.add('hidden');
+                }
+            });
+            unsubscribeListeners.push(unsub);
+        }
+
+        async function renderStudentLeaderboard(filter, currentStudentId) {
+            const list = document.getElementById('leaderboard-list');
+            if(!list) return;
+            list.innerHTML = 'Carregando ranking...';
+
+            let q;
+            if (filter === 'general') {
+                q = query(collection(db, "students"), orderBy('totalXP', 'desc'));
+            } else {
+                q = query(collection(db, "students"), where('turma', '==', filter), orderBy('totalXP', 'desc'));
+            }
+
+            const snapshot = await getDocs(q);
+            if(snapshot.empty) {
+                list.innerHTML = '<li>Nenhum dev no ranking ainda.</li>';
+                return;
+            }
+
+            list.innerHTML = snapshot.docs.map((doc, index) => {
+                const student = doc.data();
+                const isCurrentUser = doc.id === currentStudentId;
+                const highlightClass = isCurrentUser ? 'bg-cyan-500 bg-opacity-30' : '';
+                return `
+                    <li class="flex justify-between items-center p-2 rounded-lg ${highlightClass}">
+                        <span>${index + 1}. ${student.name}</span>
+                        <span class="font-bold text-lime-400">${student.totalXP} XP</span>
+                    </li>
+                `;
+            }).join('');
+        }
+        
+        // --- Modal Rendering ---
+        
+        async function handleStudentModal(studentId = null) {
+            let student = { name: '', matricula: '', turma: '' };
+            if(studentId) {
+                const docSnap = await getDoc(doc(db, 'students', studentId));
+                student = docSnap.data();
+            }
+            const modalHTML = `
+                <div class="modal-backdrop">
+                    <div class="modal-content glass-effect p-8 rounded-2xl">
+                        <h3 class="font-game text-xl text-lime-400 mb-6">${studentId ? 'Editar' : 'Adicionar'} Dev</h3>
+                        <form id="student-form" data-id="${studentId || ''}">
+                            <div class="space-y-4">
+                                <input type="text" id="student-name" placeholder="Nome Completo" required class="w-full bg-gray-800 rounded-lg p-2" value="${student.name}">
+                                <input type="text" id="student-matricula" placeholder="Matrícula" required class="w-full bg-gray-800 rounded-lg p-2" value="${student.matricula}">
+                                <input type="text" id="student-turma" placeholder="Turma" required class="w-full bg-gray-800 rounded-lg p-2" value="${student.turma}">
+                            </div>
+                            <div class="flex justify-end space-x-4 mt-8">
+                                <button type="button" class="modal-close-btn bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-6 rounded-lg">Cancelar</button>
+                                <button type="submit" class="bg-lime-500 hover:bg-lime-600 text-gray-900 font-bold py-2 px-6 rounded-lg">Salvar</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>`;
+            showModal(modalHTML);
+        }
+        
+        async function handleQuestModal(questId = null) {
+            let quest = { title: '', description: '', difficulty: 'Fácil', maxXp: 100, turmas: [], endDate: '' };
+            if (questId) {
+                const docSnap = await getDoc(doc(db, 'quests', questId));
+                quest = docSnap.data();
+                quest.endDate = quest.endDate.toDate().toISOString().split('T')[0];
+            }
+            
+            const modalHTML = `
+                <div class="modal-backdrop">
+                    <div class="modal-content glass-effect p-8 rounded-2xl">
+                        <h3 class="font-game text-xl text-fuchsia-400 mb-6">${questId ? 'Editar' : 'Criar'} Quest</h3>
+                        <form id="quest-form" data-id="${questId || ''}" class="space-y-4">
+                             <input id="quest-title" placeholder="Título da Quest" required class="w-full bg-gray-800 p-2 rounded-lg" value="${quest.title}">
+                             <textarea id="quest-description" placeholder="Descrição" class="w-full bg-gray-800 p-2 rounded-lg">${quest.description}</textarea>
+                             <div class="grid grid-cols-2 gap-4">
+                                <select id="quest-difficulty" class="w-full bg-gray-800 p-2 rounded-lg">
+                                    <option ${quest.difficulty === 'Fácil' ? 'selected' : ''}>Fácil</option>
+                                    <option ${quest.difficulty === 'Médio' ? 'selected' : ''}>Médio</option>
+                                    <option ${quest.difficulty === 'Difícil' ? 'selected' : ''}>Difícil</option>
+                                </select>
+                                <input id="quest-xp" type="number" placeholder="XP Máximo" required class="w-full bg-gray-800 p-2 rounded-lg" value="${quest.maxXp}">
+                             </div>
+                             <input id="quest-turmas" placeholder="Turmas (separadas por vírgula)" required class="w-full bg-gray-800 p-2 rounded-lg" value="${quest.turmas.join(', ')}">
+                             <input id="quest-end-date" type="date" required class="w-full bg-gray-800 p-2 rounded-lg" value="${quest.endDate}">
+                             <div class="flex justify-end space-x-4 mt-8">
+                                <button type="button" class="modal-close-btn bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-6 rounded-lg">Cancelar</button>
+                                <button type="submit" class="bg-fuchsia-500 hover:bg-fuchsia-600 text-white font-bold py-2 px-6 rounded-lg">Salvar Quest</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>`;
+            showModal(modalHTML);
+        }
+
+        async function handleGradingModal(questId) {
+            const questDoc = await getDoc(doc(db, "quests", questId));
+            if(!questDoc.exists()) return showAlert('Quest não encontrada!', 'error');
+            const quest = questDoc.data();
+            
+            showModal(`<div class="modal-backdrop"><div class="modal-content glass-effect p-8 rounded-2xl"><p>Carregando alunos...</p></div></div>`);
+            
+            const studentsQuery = query(collection(db, "students"), where("turma", "in", quest.turmas), where("teacherId", "==", currentTeacher.uid));
+            const studentsSnapshot = await getDocs(studentsQuery);
+
+            const submissionsQuery = query(collection(db, "submissions"), where("questId", "==", questId));
+            const submissionsSnapshot = await getDocs(submissionsQuery);
+            const submissions = {};
+            submissionsSnapshot.forEach(s => submissions[s.data().studentId] = s.data().score);
+
+            const studentInputs = studentsSnapshot.docs.map(sDoc => {
+                const student = {id: sDoc.id, ...sDoc.data()};
+                const score = submissions[student.id] || 0;
+                return `
+                    <div class="flex justify-between items-center bg-gray-800 p-2 rounded">
+                        <label for="grade-${student.id}" class="text-gray-300">${student.name}</label>
+                        <input id="grade-${student.id}" type="number" data-student-id="${student.id}" data-original-score="${score}" value="${score}" class="grade-input w-24 bg-gray-700 p-1 rounded text-center">
+                    </div>
+                `;
+            }).join('');
+            
+            const modalHTML = `
+                <div class="modal-backdrop">
+                    <div class="modal-content glass-effect p-8 rounded-2xl">
+                        <h3 class="font-game text-xl text-yellow-400 mb-6">Lançar XP para: ${quest.title}</h3>
+                        <form id="grading-form" data-quest-id="${questId}" class="space-y-3">
+                            ${studentInputs || '<p>Nenhum aluno encontrado para as turmas desta Quest.</p>'}
+                            <div class="flex justify-end space-x-4 mt-8">
+                                <button type="button" class="modal-close-btn bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-6 rounded-lg">Cancelar</button>
+                                <button type="submit" class="bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-2 px-6 rounded-lg">Salvar Notas</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>`;
+            showModal(modalHTML);
+        }
 
         // --- Initial Load ---
         renderLoginView();

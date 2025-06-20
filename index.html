@@ -140,30 +140,70 @@
 
         // --- TOP-LEVEL EVENT HANDLERS ---
         async function handleClick(e) {
-            const target = e.target;
-            
-            if (target.closest('.modal-close-btn') || target.classList.contains('modal-backdrop')) {
+            const target = e.target.closest('a, button'); // Find the nearest interactive element
+            if (!target) return; // If the click was not on a button or link, do nothing.
+
+            // Modal closing is a special case that doesn't need preventDefault
+            if (target.closest('.modal-close-btn') || e.target.classList.contains('modal-backdrop')) {
                 hideModal();
                 return;
             }
 
-            e.preventDefault();
+            let actionTaken = false;
 
-            if (target.id === 'show-register-link') renderRegisterView();
-            if (target.id === 'show-login-link') renderLoginView();
-            if (target.closest('.logout-btn')) signOut(auth);
-            if (target.id === 'login-student-btn') handleStudentLogin();
-            if (target.id === 'search-student-btn') handleStudentSearch();
-            if (target.classList.contains('teacher-tab')) handleTabSwitch(target);
-            if (target.matches('.approve-btn')) handleTeacherApproval(target.dataset.id, true);
-            if (target.matches('.reject-btn')) handleTeacherApproval(target.dataset.id, false);
-            if (target.closest('.add-student-btn')) handleStudentModal();
-            if (target.closest('.edit-student-btn')) handleStudentModal(target.closest('.edit-student-btn').dataset.id);
-            if (target.closest('.delete-student-btn')) handleDeleteStudent(target.closest('.delete-student-btn').dataset.id);
-            if (target.closest('.add-quest-btn')) handleQuestModal();
-            if (target.closest('.edit-quest-btn')) handleQuestModal(target.closest('.edit-quest-btn').dataset.id);
-            if (target.closest('.delete-quest-btn')) handleDeleteQuest(target.closest('.delete-quest-btn').dataset.id);
-            if (target.closest('.grade-quest-btn')) handleGradingModal(target.closest('.grade-quest-btn').dataset.id);
+            // Check for specific actions and take them
+            if (target.id === 'show-register-link') {
+                actionTaken = true;
+                renderRegisterView();
+            } else if (target.id === 'show-login-link') {
+                actionTaken = true;
+                renderLoginView();
+            } else if (target.closest('.logout-btn')) {
+                actionTaken = true;
+                signOut(auth);
+            } else if (target.id === 'login-student-btn') {
+                actionTaken = true;
+                handleStudentLogin();
+            } else if (target.id === 'search-student-btn') {
+                actionTaken = true;
+                handleStudentSearch();
+            } else if (target.classList.contains('teacher-tab')) {
+                actionTaken = true;
+                handleTabSwitch(target);
+            } else if (target.matches('.approve-btn')) {
+                actionTaken = true;
+                handleTeacherApproval(target.dataset.id, true);
+            } else if (target.matches('.reject-btn')) {
+                actionTaken = true;
+                handleTeacherApproval(target.dataset.id, false);
+            } else if (target.closest('.add-student-btn')) {
+                actionTaken = true;
+                handleStudentModal();
+            } else if (target.closest('.edit-student-btn')) {
+                actionTaken = true;
+                handleStudentModal(target.dataset.id);
+            } else if (target.closest('.delete-student-btn')) {
+                actionTaken = true;
+                handleDeleteStudent(target.dataset.id);
+            } else if (target.closest('.add-quest-btn')) {
+                actionTaken = true;
+                handleQuestModal();
+            } else if (target.closest('.edit-quest-btn')) {
+                actionTaken = true;
+                handleQuestModal(target.dataset.id);
+            } else if (target.closest('.delete-quest-btn')) {
+                actionTaken = true;
+                handleDeleteQuest(target.dataset.id);
+            } else if (target.closest('.grade-quest-btn')) {
+                actionTaken = true;
+                handleGradingModal(target.dataset.id);
+            }
+            
+            // Only prevent default if we actually handled the click.
+            // This allows the submit button's default behavior (triggering a 'submit' event) to proceed.
+            if (actionTaken) {
+                e.preventDefault();
+            }
         }
 
         async function handleSubmit(e) {
@@ -274,7 +314,7 @@
             const studentData = {
                 name: form.querySelector('#student-name').value,
                 matricula: form.querySelector('#student-matricula').value,
-                turma: form.querySelector('#student-turma').value,
+                turma: form.querySelector('#student-turma').value.trim(),
                 teacherId: currentTeacher.uid
             };
             if(!studentData.name || !studentData.matricula || !studentData.turma) return showAlert('Preencha todos os campos.', 'error');
@@ -307,7 +347,7 @@
                 description: form.querySelector('#quest-description').value,
                 difficulty: form.querySelector('#quest-difficulty').value,
                 maxXp: parseInt(form.querySelector('#quest-xp').value, 10),
-                turmas: form.querySelector('#quest-turmas').value.split(',').map(t => t.trim()),
+                turmas: form.querySelector('#quest-turmas').value.split(',').map(t => t.trim()).filter(Boolean),
                 endDate: Timestamp.fromDate(new Date(form.querySelector('#quest-end-date').value.replace(/-/g, '\/'))),
                 teacherId: currentTeacher.uid
             };
@@ -620,8 +660,8 @@
                             <td class="px-6 py-4">${student.matricula}</td>
                             <td class="px-6 py-4">${student.turma}</td>
                             <td class="px-6 py-4 text-right space-x-4">
-                                <button data-id="${student.id}" class="edit-student-btn text-blue-400 hover:text-blue-300"><i class="fas fa-pencil-alt"></i></button>
-                                <button data-id="${student.id}" class="delete-student-btn text-red-500 hover:text-red-400"><i class="fas fa-trash"></i></button>
+                                <button data-id="${student.id}" class="edit-student-btn text-blue-400 hover:text-blue-300 p-2"><i class="fas fa-pencil-alt"></i></button>
+                                <button data-id="${student.id}" class="delete-student-btn text-red-500 hover:text-red-400 p-2"><i class="fas fa-trash"></i></button>
                             </td>
                         </tr>`;
                 }).join('');
@@ -753,16 +793,13 @@
                 const submission = studentSubmissions[questId];
                 
                 let icon = 'fa-hourglass-half text-yellow-400';
-                let statusText = 'Pendente';
                 let xpText = `Vale até ${quest.maxXp} XP`;
 
                 if (submission) {
                     icon = 'fa-check-circle text-green-400';
-                    statusText = 'Concluída';
                     xpText = `Você ganhou ${submission.score} XP`;
                 } else if (quest.endDate.toDate() < new Date()) {
                     icon = 'fa-times-circle text-red-400';
-                    statusText = 'Não Entregue';
                     xpText = `Você perdeu ${quest.maxXp} XP`;
                 }
 
@@ -775,7 +812,7 @@
                             <div class="w-0.5 h-16 bg-gray-600 mt-2"></div>
                         </div>
                         <div class="glass-effect p-4 rounded-lg flex-1">
-                            <div class="flex justify-between items-center">
+                            <div class="flex justify-between items-center flex-wrap gap-2">
                                 <h3 class="font-bold text-lg text-cyan-300">${quest.title}</h3>
                                 <span class="text-sm font-semibold text-lime-400 whitespace-nowrap">${xpText}</span>
                             </div>
@@ -786,7 +823,7 @@
                             </div>
                         </div>
                     </div>`;
-            }).join('');
+            }).join('') || '<p class="text-gray-400">Sua jornada começa em breve!</p>';
         }
 
         async function loadPersonalMessages(studentId) {
@@ -811,7 +848,7 @@
         async function renderStudentLeaderboard(filter, currentStudentId) {
             const list = document.getElementById('leaderboard-list');
             if(!list) return;
-            list.innerHTML = 'Carregando ranking...';
+            list.innerHTML = '<li>Carregando ranking...</li>';
 
             let q;
             if (filter === 'general') {
@@ -923,7 +960,7 @@
                 return `
                     <div class="flex justify-between items-center bg-gray-800 p-2 rounded">
                         <label for="grade-${student.id}" class="text-gray-300">${student.name}</label>
-                        <input id="grade-${student.id}" type="number" data-student-id="${student.id}" data-original-score="${score}" value="${score}" class="grade-input w-24 bg-gray-700 p-1 rounded text-center">
+                        <input id="grade-${student.id}" type="number" data-student-id="${student.id}" value="${score}" class="grade-input w-24 bg-gray-700 p-1 rounded text-center">
                     </div>
                 `;
             }).join('');
@@ -933,7 +970,9 @@
                     <div class="modal-content glass-effect p-8 rounded-2xl">
                         <h3 class="font-game text-xl text-yellow-400 mb-6">Lançar XP para: ${quest.title}</h3>
                         <form id="grading-form" data-quest-id="${questId}" class="space-y-3">
-                            ${studentInputs || '<p>Nenhum aluno encontrado para as turmas desta Quest.</p>'}
+                            <div class="max-h-64 overflow-y-auto space-y-3 pr-2">
+                                ${studentInputs || '<p>Nenhum aluno encontrado para as turmas desta Quest.</p>'}
+                            </div>
                             <div class="flex justify-end space-x-4 mt-8">
                                 <button type="button" class="modal-close-btn bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-6 rounded-lg">Cancelar</button>
                                 <button type="submit" class="bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-2 px-6 rounded-lg">Salvar Notas</button>

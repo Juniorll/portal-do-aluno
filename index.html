@@ -140,34 +140,45 @@
 
         // --- TOP-LEVEL EVENT HANDLERS ---
         async function handleClick(e) {
-            const target = e.target.closest('a, button'); // Find the nearest interactive element
-            if (!target) return; // If the click was not on a button or link, do nothing.
+            const target = e.target.closest('a, button');
+            if (!target) return;
 
             if (target.closest('.modal-close-btn') || e.target.classList.contains('modal-backdrop')) {
                 hideModal();
                 return;
             }
 
-            let actionTaken = false;
-
-            if (target.id === 'show-register-link') { actionTaken = true; renderRegisterView(); } 
-            else if (target.id === 'show-login-link') { actionTaken = true; renderLoginView(); } 
-            else if (target.closest('.logout-btn')) { actionTaken = true; signOut(auth); } 
-            else if (target.id === 'login-student-btn') { actionTaken = true; handleStudentLogin(); } 
-            else if (target.id === 'search-student-btn') { actionTaken = true; handleStudentSearch(); } 
-            else if (target.classList.contains('teacher-tab')) { actionTaken = true; handleTabSwitch(target); } 
-            else if (target.matches('.approve-btn')) { actionTaken = true; handleTeacherApproval(target.dataset.id, true); } 
-            else if (target.matches('.reject-btn')) { actionTaken = true; handleTeacherApproval(target.dataset.id, false); } 
-            else if (target.closest('.add-student-btn')) { actionTaken = true; handleStudentModal(); } 
-            else if (target.closest('.edit-student-btn')) { actionTaken = true; handleStudentModal(target.dataset.id); } 
-            else if (target.closest('.delete-student-btn')) { actionTaken = true; handleDeleteStudent(target.dataset.id); } 
-            else if (target.closest('.add-quest-btn')) { actionTaken = true; handleQuestModal(); } 
-            else if (target.closest('.edit-quest-btn')) { actionTaken = true; handleQuestModal(target.dataset.id); } 
-            else if (target.closest('.delete-quest-btn')) { actionTaken = true; handleDeleteQuest(target.dataset.id); } 
-            else if (target.closest('.grade-quest-btn')) { actionTaken = true; handleGradingModal(target.dataset.id); }
-            
-            if (actionTaken) {
+            // Handle actions that should not prevent default form submission
+            if (target.closest('.logout-btn')) {
                 e.preventDefault();
+                signOut(auth);
+                return;
+            }
+
+            const actionMap = {
+                'show-register-link': renderRegisterView,
+                'show-login-link': renderLoginView,
+                'login-student-btn': handleStudentLogin,
+                'search-student-btn': handleStudentSearch,
+                'add-student-btn': () => handleStudentModal(),
+                'edit-student-btn': () => handleStudentModal(target.dataset.id),
+                'delete-student-btn': () => handleDeleteStudent(target.dataset.id),
+                'add-quest-btn': () => handleQuestModal(),
+                'edit-quest-btn': () => handleQuestModal(target.dataset.id),
+                'delete-quest-btn': () => handleDeleteQuest(target.dataset.id),
+                'grade-quest-btn': () => handleGradingModal(target.dataset.id),
+                'approve-btn': () => handleTeacherApproval(target.dataset.id, true),
+                'reject-btn': () => handleTeacherApproval(target.dataset.id, false),
+            };
+
+            const action = Object.keys(actionMap).find(key => target.id === key || target.classList.contains(key));
+            
+            if (action) {
+                e.preventDefault();
+                actionMap[action]();
+            } else if (target.classList.contains('teacher-tab')) {
+                e.preventDefault();
+                handleTabSwitch(target);
             }
         }
 
@@ -190,7 +201,9 @@
             }
              if (target.name === 'message-type') {
                 const container = document.getElementById('student-select-container');
-                container.style.display = e.target.value === 'personal' ? 'block' : 'none';
+                if (container) {
+                    container.style.display = e.target.value === 'personal' ? 'block' : 'none';
+                }
             }
         }
         
@@ -721,11 +734,13 @@
                 </form>
             `;
             
-            const q = query(collection(db, "students"), where("teacherId", "==", currentTeacher.uid), orderBy("name"));
+            const q = query(collection(db, "students"), where("teacherId", "==", currentTeacher.uid));
             const snapshot = await getDocs(q);
             const select = document.getElementById('message-student-select');
             select.innerHTML = '<option value="">-- Selecione --</option>';
-            snapshot.forEach(doc => {
+
+            const sortedDocs = snapshot.docs.sort((a, b) => a.data().name.localeCompare(b.data().name));
+            sortedDocs.forEach(doc => {
                 select.innerHTML += `<option value="${doc.id}">${doc.data().name}</option>`;
             });
         }

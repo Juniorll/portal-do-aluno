@@ -148,16 +148,10 @@
                 return;
             }
 
-            // Handle actions that should not prevent default form submission
-            if (target.closest('.logout-btn')) {
-                e.preventDefault();
-                signOut(auth);
-                return;
-            }
-
             const actionMap = {
                 'show-register-link': renderRegisterView,
                 'show-login-link': renderLoginView,
+                'logout-btn': () => signOut(auth),
                 'login-student-btn': handleStudentLogin,
                 'search-student-btn': handleStudentSearch,
                 'add-student-btn': () => handleStudentModal(),
@@ -171,11 +165,11 @@
                 'reject-btn': () => handleTeacherApproval(target.dataset.id, false),
             };
 
-            const action = Object.keys(actionMap).find(key => target.id === key || target.classList.contains(key));
+            const actionKey = Object.keys(actionMap).find(key => target.id === key || target.classList.contains(key));
             
-            if (action) {
+            if (actionKey) {
                 e.preventDefault();
-                actionMap[action]();
+                actionMap[actionKey]();
             } else if (target.classList.contains('teacher-tab')) {
                 e.preventDefault();
                 handleTabSwitch(target);
@@ -457,10 +451,11 @@
                 </div>`;
             showView(html);
 
-            const q = query(collection(db, "messages"), where("type", "==", "general"), orderBy("timestamp", "desc"));
+            const q = query(collection(db, "messages"), where("type", "==", "general"));
             const snapshot = await getDocs(q);
             if (!snapshot.empty) {
-                const message = snapshot.docs[0].data();
+                const sortedMessages = snapshot.docs.sort((a,b) => b.data().timestamp.toDate() - a.data().timestamp.toDate());
+                const message = sortedMessages[0].data();
                 const board = document.getElementById('general-messages-board');
                 board.innerHTML = `
                      <h3 class="font-game text-xl text-cyan-400 mb-4"><i class="fas fa-bullhorn mr-2"></i> Mensagem dos Mestres</h3>
@@ -810,10 +805,11 @@
             const box = document.getElementById('personal-message-box');
             if(!box) return;
 
-            const q = query(collection(db, "messages"), where("studentId", "==", studentId), orderBy("timestamp", "desc"));
+            const q = query(collection(db, "messages"), where("studentId", "==", studentId));
             const unsub = onSnapshot(q, (snapshot) => {
                 if(!snapshot.empty) {
-                    const message = snapshot.docs[0].data(); // Show the latest
+                    const sortedMessages = snapshot.docs.sort((a,b) => b.data().timestamp.toDate() - a.data().timestamp.toDate());
+                    const message = sortedMessages[0].data(); // Show the latest
                     box.innerHTML = `
                         <h3 class="font-bold text-purple-300"><i class="fas fa-envelope mr-2"></i> Mensagem do seu Mestre:</h3>
                         <p class="italic">"${message.content}"</p>`;

@@ -293,14 +293,14 @@
         // --- Teacher Dashboard ---
         function handleTabSwitch(tabElement) {
             document.querySelectorAll('.teacher-tab').forEach(tab => tab.classList.remove('active'));
-            document.querySelectorAll('.teacher-tab-content').forEach(content => content.style.display = 'none');
+            document.querySelectorAll('.teacher-tab-content').forEach(content => content.classList.remove('active'));
 
             tabElement.classList.add('active');
             const tabName = tabElement.dataset.tab;
             const contentEl = document.getElementById(`tab-content-${tabName}`);
-            contentEl.style.display = 'block';
+            contentEl.classList.add('active');
 
-            if (contentEl.innerHTML === '') { // Lazy load content
+            if (contentEl.innerHTML.trim() === '') { // Lazy load content
                 if (tabName === 'students') renderStudentsTab();
                 if (tabName === 'quests') renderQuestsTab();
                 if (tabName === 'messages') renderMessagesTab();
@@ -570,8 +570,8 @@
                         </nav>
                     </div>
                     <div id="tab-content-students" class="teacher-tab-content active"></div>
-                    <div id="tab-content-quests" class="teacher-tab-content" style="display:none"></div>
-                    <div id="tab-content-messages" class="teacher-tab-content" style="display:none"></div>`;
+                    <div id="tab-content-quests" class="teacher-tab-content"></div>
+                    <div id="tab-content-messages" class="teacher-tab-content"></div>`;
             }
 
             const viewHTML = `

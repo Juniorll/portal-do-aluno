@@ -64,13 +64,12 @@
 
         // --- IMPORTANT: PASTE YOUR FIREBASE CONFIGURATION HERE ---
         const firebaseConfig = {
-  apiKey: "AIzaSyDv0qbKmHe3CKNMez7A1YyBN4ZXWhNqaXo",
-  authDomain: "portal-de-notas-gamificado.firebaseapp.com",
-  projectId: "portal-de-notas-gamificado",
-  storageBucket: "portal-de-notas-gamificado.firebasestorage.app",
-  messagingSenderId: "379073119299",
-  appId: "1:379073119299:web:d9655747ce1d865a3fc0f6",
-  measurementId: "G-HM5WXQ13FW"
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_AUTH_DOMAIN",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_STORAGE_BUCKET",
+            messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+            appId: "YOUR_APP_ID"
         };
         // ---------------------------------------------------------
 
@@ -155,9 +154,11 @@
                 'login-student-btn': handleStudentLogin,
                 'search-student-btn': handleStudentSearch,
                 'add-student-btn': () => handleStudentModal(),
+                'import-students-btn': handleImportStudentModal,
                 'edit-student-btn': () => handleStudentModal(target.dataset.id),
                 'delete-student-btn': () => handleDeleteStudent(target.dataset.id),
                 'add-quest-btn': () => handleQuestModal(),
+                'import-quests-btn': handleImportQuestModal,
                 'edit-quest-btn': () => handleQuestModal(target.dataset.id),
                 'delete-quest-btn': () => handleDeleteQuest(target.dataset.id),
                 'grade-quest-btn': () => handleGradingModal(target.dataset.id),
@@ -185,6 +186,8 @@
             if (target.id === 'quest-form') handleQuestFormSubmit(target);
             if (target.id === 'message-form') handleMessageFormSubmit(target);
             if (target.id === 'grading-form') handleGradingFormSubmit(target);
+            if (target.id === 'import-student-form') handleStudentImport(target);
+            if (target.id === 'import-quest-form') handleQuestImport(target);
         }
 
         function handleChange(e) {
@@ -411,6 +414,89 @@
                 form.querySelector('#message-content').value = '';
             } catch (error) { showAlert(`Erro ao enviar mensagem: ${error.message}`, 'error'); }
         }
+
+        async function handleStudentImport(form) {
+            const file = form.querySelector('#csv-file-students').files[0];
+            if (!file) return showAlert('Por favor, selecione um arquivo.', 'error');
+
+            const reader = new FileReader();
+            reader.onload = async (event) => {
+                const csv = event.target.result;
+                const lines = csv.split('\n').filter(line => line.trim() !== '');
+                if (lines.length <= 1) return showAlert('Arquivo CSV vazio ou com apenas cabeçalho.', 'error');
+
+                const header = lines[0].trim().split(',');
+                if (header[0] !== 'nome' || header[1] !== 'matricula' || header[2] !== 'turma') {
+                    return showAlert('Cabeçalho do CSV inválido. Use: nome,matricula,turma', 'error');
+                }
+
+                const batch = writeBatch(db);
+                for (let i = 1; i < lines.length; i++) {
+                    const values = lines[i].trim().split(',');
+                    const studentData = {
+                        name: values[0],
+                        matricula: values[1],
+                        turma: values[2],
+                        teacherId: currentTeacher.uid,
+                        totalXP: 0,
+                        lastSeenXP: 0
+                    };
+                    const newStudentRef = doc(collection(db, "students"));
+                    batch.set(newStudentRef, studentData);
+                }
+
+                try {
+                    await batch.commit();
+                    showAlert(`${lines.length - 1} alunos importados com sucesso!`);
+                    hideModal();
+                } catch (error) {
+                    showAlert(`Erro ao importar alunos: ${error.message}`, 'error');
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        async function handleQuestImport(form) {
+             const file = form.querySelector('#csv-file-quests').files[0];
+            if (!file) return showAlert('Por favor, selecione um arquivo.', 'error');
+
+            const reader = new FileReader();
+            reader.onload = async (event) => {
+                const csv = event.target.result;
+                const lines = csv.split('\n').filter(line => line.trim() !== '');
+                 if (lines.length <= 1) return showAlert('Arquivo CSV vazio ou com apenas cabeçalho.', 'error');
+
+                const header = lines[0].trim().split(',');
+                if (header[0] !== 'titulo' || header[1] !== 'descricao' || header[2] !== 'dificuldade' || header[3] !== 'xp' || header[4] !== 'turmas' || header[5] !== 'prazo') {
+                    return showAlert('Cabeçalho do CSV inválido. Use: titulo,descricao,dificuldade,xp,turmas,prazo (formato AAAA-MM-DD)', 'error');
+                }
+
+                const batch = writeBatch(db);
+                for (let i = 1; i < lines.length; i++) {
+                    const values = lines[i].trim().split(',');
+                    const questData = {
+                        title: values[0],
+                        description: values[1],
+                        difficulty: values[2],
+                        maxXp: parseInt(values[3], 10),
+                        turmas: values[4].split(';').map(t => t.trim()), // Use semicolon for multiple classes
+                        endDate: Timestamp.fromDate(new Date(values[5].replace(/-/g, '\/'))),
+                        teacherId: currentTeacher.uid
+                    };
+                    const newQuestRef = doc(collection(db, "quests"));
+                    batch.set(newQuestRef, questData);
+                }
+
+                try {
+                    await batch.commit();
+                    showAlert(`${lines.length - 1} quests importadas com sucesso!`);
+                    hideModal();
+                } catch (error) {
+                    showAlert(`Erro ao importar quests: ${error.message}`, 'error');
+                }
+            };
+            reader.readAsText(file);
+        }
         
         // --- VIEW & COMPONENT RENDERING (The HTML Generators) ---
         
@@ -607,10 +693,11 @@
             const container = document.getElementById('tab-content-students');
             if(!container) return;
             container.innerHTML = `
-                <div class="flex justify-between items-center mb-4">
+                <div class="flex flex-wrap gap-4 justify-between items-center mb-4">
                   <h2 class="font-game text-xl text-cyan-400">Devs (Alunos)</h2>
-                  <div>
-                    <button class="add-student-btn bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg"><i class="fas fa-plus mr-2"></i>Adicionar Dev</button>
+                  <div class="flex gap-2">
+                    <button id="import-students-btn" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg"><i class="fas fa-upload mr-2"></i>Importar</button>
+                    <button class="add-student-btn bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg"><i class="fas fa-plus mr-2"></i>Adicionar</button>
                   </div>
                 </div>
                 <div id="students-list" class="glass-effect p-4 rounded-lg">Carregando...</div>`;
@@ -660,10 +747,11 @@
             const container = document.getElementById('tab-content-quests');
             if(!container) return;
             container.innerHTML = `
-                <div class="flex justify-between items-center mb-4">
+                <div class="flex flex-wrap gap-4 justify-between items-center mb-4">
                   <h2 class="font-game text-xl text-cyan-400">Quests (Atividades)</h2>
-                  <div>
-                    <button class="add-quest-btn bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg"><i class="fas fa-plus mr-2"></i>Criar Quest</button>
+                  <div class="flex gap-2">
+                    <button id="import-quests-btn" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg"><i class="fas fa-upload mr-2"></i>Importar</button>
+                    <button class="add-quest-btn bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg"><i class="fas fa-plus mr-2"></i>Criar</button>
                   </div>
                 </div>
                 <div id="quests-list" class="space-y-4">Carregando...</div>`;
@@ -954,6 +1042,45 @@
                             <div class="flex justify-end space-x-4 mt-8">
                                 <button type="button" class="modal-close-btn bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-6 rounded-lg">Cancelar</button>
                                 <button type="submit" class="bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-2 px-6 rounded-lg">Salvar Notas</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>`;
+            showModal(modalHTML);
+        }
+
+        function handleImportStudentModal() {
+            const modalHTML = `
+                <div class="modal-backdrop">
+                    <div class="modal-content glass-effect p-8 rounded-2xl">
+                        <h3 class="font-game text-xl text-lime-400 mb-6">Importar Devs (Alunos)</h3>
+                        <form id="import-student-form" class="space-y-4">
+                            <p class="text-gray-300">Selecione um arquivo CSV com as colunas: <code class="bg-gray-900 p-1 rounded">nome,matricula,turma</code></p>
+                            <a href="data:text/csv;charset=utf-8,nome,matricula,turma%0AJoao%20Silva,12345,2024A%0AMaria%20Souza,67890,2024B" download="template_alunos.csv" class="text-cyan-400 hover:underline">Descarregar modelo</a>
+                            <input type="file" id="csv-file-students" accept=".csv" required class="w-full text-gray-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-500 file:text-white hover:file:bg-blue-600">
+                             <div class="flex justify-end space-x-4 mt-8">
+                                <button type="button" class="modal-close-btn bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-6 rounded-lg">Cancelar</button>
+                                <button type="submit" class="bg-lime-500 hover:bg-lime-600 text-gray-900 font-bold py-2 px-6 rounded-lg">Processar</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>`;
+            showModal(modalHTML);
+        }
+        
+        function handleImportQuestModal() {
+             const modalHTML = `
+                <div class="modal-backdrop">
+                    <div class="modal-content glass-effect p-8 rounded-2xl">
+                        <h3 class="font-game text-xl text-fuchsia-400 mb-6">Importar Quests</h3>
+                        <form id="import-quest-form" class="space-y-4">
+                            <p class="text-gray-300">Selecione um CSV com as colunas: <code class="bg-gray-900 p-1 rounded">titulo,descricao,dificuldade,xp,turmas,prazo</code></p>
+                            <p class="text-sm text-gray-400">Use ponto e vírgula (;) para separar múltiplas turmas. Prazo no formato AAAA-MM-DD.</p>
+                            <a href="data:text/csv;charset=utf-8,titulo,descricao,dificuldade,xp,turmas,prazo%0AQuest%20Inicial,Fazer%20o%20setup,Facil,100,2024A;2024B,2025-12-31" download="template_quests.csv" class="text-cyan-400 hover:underline">Descarregar modelo</a>
+                            <input type="file" id="csv-file-quests" accept=".csv" required class="w-full text-gray-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-500 file:text-white hover:file:bg-blue-600">
+                             <div class="flex justify-end space-x-4 mt-8">
+                                <button type="button" class="modal-close-btn bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-6 rounded-lg">Cancelar</button>
+                                <button type="submit" class="bg-fuchsia-500 hover:bg-fuchsia-600 text-white font-bold py-2 px-6 rounded-lg">Processar</button>
                             </div>
                         </form>
                     </div>

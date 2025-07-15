@@ -37,6 +37,27 @@
         .teacher-tab:hover:not(.active) { color: #e5e7eb; border-color: #4b5563; }
         .teacher-tab-content { display: none; }
         .teacher-tab-content.active { display: block; }
+
+        /* Podium Styles */
+        .podium-item { transition: transform 0.3s ease-in-out; }
+        .podium-item:hover { transform: translateY(-10px); }
+        .podium-1 { border-color: #FFD700; box-shadow: 0 0 20px #FFD700; }
+        .podium-2 { border-color: #C0C0C0; box-shadow: 0 0 15px #C0C0C0; }
+        .podium-3 { border-color: #CD7F32; box-shadow: 0 0 10px #CD7F32; }
+        .podium-other { border-color: #4A5568; }
+        .podium-rank {
+            position: absolute;
+            top: -15px;
+            left: -15px;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.25rem;
+        }
     </style>
 </head>
 <body class="min-h-screen p-4 flex items-center justify-center">
@@ -508,6 +529,16 @@
                         <h1 class="font-game text-4xl md:text-6xl text-cyan-400 drop-shadow-[0_4px_4px_rgba(0,255,255,0.25)]">Level Up!</h1>
                         <p class="text-gray-300 mt-4 text-lg">Sua Jornada para se tornar um Dev Lendário começa aqui.</p>
                     </header>
+                    
+                    <!-- NEW PODIUM SECTION -->
+                    <div id="top-5-podium-container" class="mb-12">
+                        <h2 class="font-game text-3xl text-center text-yellow-400 mb-8">Top 5 Devs</h2>
+                        <div id="top-5-podium" class="flex justify-center items-end gap-4 flex-wrap">
+                            <!-- Podium will be rendered here by JS -->
+                            <p class="text-gray-400">Carregando o pódio...</p>
+                        </div>
+                    </div>
+
                     <div class="grid md:grid-cols-2 gap-8">
                         <div class="glass-effect p-8 rounded-2xl">
                             <h2 class="font-game text-2xl text-lime-400 mb-4">Área do Dev</h2>
@@ -537,23 +568,72 @@
                     <div id="general-messages-board" class="mt-8 glass-effect p-6 rounded-2xl hidden"></div>
                 </div>`;
             showView(html);
-
-            const q = query(collection(db, "messages"), where("type", "==", "general"));
-            const snapshot = await getDocs(q);
-            if (!snapshot.empty) {
-                const sortedMessages = snapshot.docs.sort((a,b) => b.data().timestamp.toDate() - a.data().timestamp.toDate());
-                const message = sortedMessages[0].data();
-                const board = document.getElementById('general-messages-board');
-                board.innerHTML = `
-                     <h3 class="font-game text-xl text-cyan-400 mb-4"><i class="fas fa-bullhorn mr-2"></i> Mensagem dos Mestres</h3>
-                     <div class="text-center italic text-gray-300">
-                        <p class="text-lg">"${message.content}"</p>
-                        <p class="text-sm text-gray-400 mt-2">- ${message.teacherName}</p>
-                     </div>`;
-                board.classList.remove('hidden');
-            }
+            renderTop5Podium(); // Call the new function to render the podium
         }
         
+        async function renderTop5Podium() {
+            const podiumContainer = document.getElementById('top-5-podium');
+            if (!podiumContainer) return;
+
+            try {
+                const q = query(collection(db, "students"));
+                const snapshot = await getDocs(q);
+                
+                if (snapshot.empty) {
+                    podiumContainer.innerHTML = '<p class="text-gray-400">Ainda não há devs no ranking para o pódio.</p>';
+                    return;
+                }
+
+                const students = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                const top5 = students.sort((a, b) => (b.totalXP || 0) - (a.totalXP || 0)).slice(0, 5);
+
+                const podiumOrder = [1, 0, 2, 3, 4]; // Order to display: 2nd, 1st, 3rd, 4th, 5th
+                let podiumHTML = '';
+
+                for(const index of podiumOrder) {
+                    if (top5[index]) {
+                        const student = top5[index];
+                        const rank = index + 1;
+                        let heightClass = 'h-32';
+                        let rankColor = 'bg-gray-600 text-white';
+                        let podiumClass = 'podium-other';
+                        let icon = `<i class="fas fa-star text-yellow-300"></i>`;
+
+                        if (rank === 1) {
+                            heightClass = 'h-48';
+                            podiumClass = 'podium-1';
+                            rankColor = 'bg-yellow-400 text-black';
+                            icon = `<i class="fas fa-crown text-yellow-400"></i>`;
+                        } else if (rank === 2) {
+                            heightClass = 'h-40';
+                            podiumClass = 'podium-2';
+                            rankColor = 'bg-gray-300 text-black';
+                            icon = `<i class="fas fa-medal text-gray-300"></i>`;
+                        } else if (rank === 3) {
+                            heightClass = 'h-32';
+                            podiumClass = 'podium-3';
+                            rankColor = 'bg-yellow-600 text-white';
+                            icon = `<i class="fas fa-award text-yellow-600"></i>`;
+                        }
+                        
+                        podiumHTML += `
+                            <div class="relative podium-item glass-effect rounded-t-lg border-b-4 ${podiumClass} w-48 ${heightClass} flex flex-col items-center justify-center p-4 text-center">
+                                <div class="podium-rank ${rankColor}">${rank}</div>
+                                <div class="text-2xl mb-2">${icon}</div>
+                                <h3 class="font-bold text-lg truncate w-full">${student.name}</h3>
+                                <p class="font-game text-lime-400 text-sm">${student.totalXP || 0} XP</p>
+                            </div>
+                        `;
+                    }
+                }
+                podiumContainer.innerHTML = podiumHTML || '<p class="text-gray-400">Ainda não há devs no ranking para o pódio.</p>';
+
+            } catch (error) {
+                console.error("Error rendering podium:", error);
+                podiumContainer.innerHTML = '<p class="text-red-500">Erro ao carregar o pódio.</p>';
+            }
+        }
+
         function renderRegisterView() {
             const html = `
                 <div id="register-view" class="max-w-md mx-auto">

@@ -58,6 +58,10 @@
             font-weight: bold;
             font-size: 1.25rem;
         }
+        .epic-highlight {
+            border: 2px solid #a855f7; /* purple-500 */
+            box-shadow: 0 0 15px rgba(168, 85, 247, 0.5);
+        }
     </style>
 </head>
 <body class="min-h-screen p-4 flex items-center justify-center">
@@ -85,13 +89,12 @@
 
         // --- IMPORTANT: PASTE YOUR FIREBASE CONFIGURATION HERE ---
         const firebaseConfig = {
-  apiKey: "AIzaSyDv0qbKmHe3CKNMez7A1YyBN4ZXWhNqaXo",
-  authDomain: "portal-de-notas-gamificado.firebaseapp.com",
-  projectId: "portal-de-notas-gamificado",
-  storageBucket: "portal-de-notas-gamificado.firebasestorage.app",
-  messagingSenderId: "379073119299",
-  appId: "1:379073119299:web:d9655747ce1d865a3fc0f6",
-  measurementId: "G-HM5WXQ13FW"
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_AUTH_DOMAIN",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_STORAGE_BUCKET",
+            messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+            appId: "YOUR_APP_ID"
         };
         // ---------------------------------------------------------
 
@@ -184,6 +187,9 @@
                 'edit-quest-btn': () => handleQuestModal(target.dataset.id),
                 'delete-quest-btn': () => handleDeleteQuest(target.dataset.id),
                 'grade-quest-btn': () => handleGradingModal(target.dataset.id),
+                'add-epic-work-btn': () => handleEpicWorkModal(),
+                'edit-epic-work-btn': () => handleEpicWorkModal(target.dataset.id),
+                'delete-epic-work-btn': () => handleDeleteEpicWork(target.dataset.id),
                 'approve-btn': () => handleTeacherApproval(target.dataset.id, true),
                 'reject-btn': () => handleTeacherApproval(target.dataset.id, false),
             };
@@ -210,6 +216,7 @@
             if (target.id === 'grading-form') handleGradingFormSubmit(target);
             if (target.id === 'import-student-form') handleStudentImport(target);
             if (target.id === 'import-quest-form') handleQuestImport(target);
+            if (target.id === 'epic-work-form') handleEpicWorkFormSubmit(target);
         }
 
         function handleChange(e) {
@@ -223,6 +230,9 @@
                 if (container) {
                     container.style.display = e.target.value === 'personal' ? 'block' : 'none';
                 }
+            }
+            if (target.id === 'epic-quest-select') {
+                populateEpicStudentsSelect(target.value);
             }
         }
         
@@ -303,6 +313,7 @@
                 if (tabName === 'students') renderStudentsTab();
                 if (tabName === 'quests') renderQuestsTab();
                 if (tabName === 'messages') renderMessagesTab();
+                if (tabName === 'epic-works') renderEpicWorksTab();
             }
         }
         
@@ -519,6 +530,45 @@
             };
             reader.readAsText(file);
         }
+
+        async function handleEpicWorkFormSubmit(form) {
+            const id = form.dataset.id;
+            const questSelect = form.querySelector('#epic-quest-select');
+            const questId = questSelect.value;
+            const questTitle = questSelect.options[questSelect.selectedIndex].text;
+            const workLink = form.querySelector('#epic-work-link').value;
+            
+            const selectedStudents = Array.from(form.querySelectorAll('input[name="epic-students"]:checked'));
+            const studentIds = selectedStudents.map(el => el.value);
+            const studentNames = selectedStudents.map(el => el.dataset.name);
+
+            if (!questId || !workLink || studentIds.length === 0) {
+                return showAlert('Preencha todos os campos: Quest, Link e ao menos um Aluno.', 'error');
+            }
+
+            const epicData = { questId, questTitle, workLink, studentIds, studentNames, teacherId: currentTeacher.uid, timestamp: serverTimestamp() };
+
+            try {
+                if (id) {
+                    await updateDoc(doc(db, "epicWorks", id), epicData);
+                    showAlert('Trabalho Épico atualizado!');
+                } else {
+                    await addDoc(collection(db, "epicWorks"), epicData);
+                    showAlert('Trabalho Épico registrado com sucesso!');
+                }
+                hideModal();
+            } catch (error) {
+                showAlert(`Erro ao salvar Trabalho Épico: ${error.message}`, 'error');
+            }
+        }
+
+        async function handleDeleteEpicWork(epicWorkId) {
+             if (!window.confirm('Tem certeza que deseja remover este Trabalho Épico?')) return;
+            try {
+                await deleteDoc(doc(db, "epicWorks", epicWorkId));
+                showAlert('Trabalho Épico removido.');
+            } catch (error) { showAlert(`Erro ao remover: ${error.message}`, 'error'); }
+        }
         
         // --- VIEW & COMPONENT RENDERING (The HTML Generators) ---
         
@@ -530,14 +580,14 @@
                         <p class="text-gray-300 mt-4 text-lg">Sua Jornada para se tornar um Dev Lendário começa aqui.</p>
                     </header>
                     
-                    <!-- NEW PODIUM SECTION -->
                     <div id="top-5-podium-container" class="mb-12">
                         <h2 class="font-game text-3xl text-center text-yellow-400 mb-8">Top 5 Devs</h2>
                         <div id="top-5-podium" class="flex justify-center items-end gap-4 flex-wrap">
-                            <!-- Podium will be rendered here by JS -->
                             <p class="text-gray-400">Carregando o pódio...</p>
                         </div>
                     </div>
+
+                    <div id="epic-works-showcase-container" class="mb-12"></div>
 
                     <div class="grid md:grid-cols-2 gap-8">
                         <div class="glass-effect p-8 rounded-2xl">
@@ -568,7 +618,8 @@
                     <div id="general-messages-board" class="mt-8 glass-effect p-6 rounded-2xl hidden"></div>
                 </div>`;
             showView(html);
-            renderTop5Podium(); // Call the new function to render the podium
+            renderTop5Podium();
+            renderEpicWorksShowcase();
         }
         
         async function renderTop5Podium() {
@@ -587,7 +638,7 @@
                 const students = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 const top5 = students.sort((a, b) => (b.totalXP || 0) - (a.totalXP || 0)).slice(0, 5);
 
-                const podiumOrder = [1, 0, 2, 3, 4]; // Order to display: 2nd, 1st, 3rd, 4th, 5th
+                const podiumOrder = [1, 0, 2, 3, 4];
                 let podiumHTML = '';
 
                 for(const index of podiumOrder) {
@@ -599,22 +650,9 @@
                         let podiumClass = 'podium-other';
                         let icon = `<i class="fas fa-star text-yellow-300"></i>`;
 
-                        if (rank === 1) {
-                            heightClass = 'h-48';
-                            podiumClass = 'podium-1';
-                            rankColor = 'bg-yellow-400 text-black';
-                            icon = `<i class="fas fa-crown text-yellow-400"></i>`;
-                        } else if (rank === 2) {
-                            heightClass = 'h-40';
-                            podiumClass = 'podium-2';
-                            rankColor = 'bg-gray-300 text-black';
-                            icon = `<i class="fas fa-medal text-gray-300"></i>`;
-                        } else if (rank === 3) {
-                            heightClass = 'h-32';
-                            podiumClass = 'podium-3';
-                            rankColor = 'bg-yellow-600 text-white';
-                            icon = `<i class="fas fa-award text-yellow-600"></i>`;
-                        }
+                        if (rank === 1) { heightClass = 'h-48'; podiumClass = 'podium-1'; rankColor = 'bg-yellow-400 text-black'; icon = `<i class="fas fa-crown text-yellow-400"></i>`; } 
+                        else if (rank === 2) { heightClass = 'h-40'; podiumClass = 'podium-2'; rankColor = 'bg-gray-300 text-black'; icon = `<i class="fas fa-medal text-gray-300"></i>`; } 
+                        else if (rank === 3) { heightClass = 'h-32'; podiumClass = 'podium-3'; rankColor = 'bg-yellow-600 text-white'; icon = `<i class="fas fa-award text-yellow-600"></i>`; }
                         
                         podiumHTML += `
                             <div class="relative podium-item glass-effect rounded-t-lg border-b-4 ${podiumClass} w-48 ${heightClass} flex flex-col items-center justify-center p-4 text-center">
@@ -622,8 +660,7 @@
                                 <div class="text-2xl mb-2">${icon}</div>
                                 <h3 class="font-bold text-lg truncate w-full">${student.name}</h3>
                                 <p class="font-game text-lime-400 text-sm">${student.totalXP || 0} XP</p>
-                            </div>
-                        `;
+                            </div>`;
                     }
                 }
                 podiumContainer.innerHTML = podiumHTML || '<p class="text-gray-400">Ainda não há devs no ranking para o pódio.</p>';
@@ -631,6 +668,48 @@
             } catch (error) {
                 console.error("Error rendering podium:", error);
                 podiumContainer.innerHTML = '<p class="text-red-500">Erro ao carregar o pódio.</p>';
+            }
+        }
+
+        async function renderEpicWorksShowcase() {
+            const container = document.getElementById('epic-works-showcase-container');
+            if (!container) return;
+
+            container.innerHTML = `<h2 class="font-game text-3xl text-center text-purple-400 mb-8">Trabalhos Épicos</h2>
+                                   <div id="epic-works-list" class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                       <p class="text-gray-400 col-span-full text-center">Carregando trabalhos...</p>
+                                   </div>`;
+
+            try {
+                const q = query(collection(db, "epicWorks"));
+                const snapshot = await getDocs(q);
+                const listContainer = document.getElementById('epic-works-list');
+
+                if (snapshot.empty) {
+                    listContainer.innerHTML = '<p class="text-gray-400 col-span-full text-center">Nenhum trabalho épico registrado ainda.</p>';
+                    return;
+                }
+                
+                const sortedWorks = snapshot.docs.sort((a,b) => b.data().timestamp.toDate() - a.data().timestamp.toDate());
+
+                listContainer.innerHTML = sortedWorks.map(doc => {
+                    const work = doc.data();
+                    return `
+                        <div class="glass-effect rounded-lg p-6 flex flex-col epic-highlight">
+                            <div class="flex-grow">
+                                <h3 class="font-bold text-lg text-purple-300">${work.questTitle}</h3>
+                                <p class="text-sm text-gray-400 mt-2">Por: ${work.studentNames.join(', ')}</p>
+                            </div>
+                            <a href="${work.workLink}" target="_blank" rel="noopener noreferrer" class="mt-4 bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded-lg text-center">
+                                Ver Trabalho <i class="fas fa-external-link-alt ml-2"></i>
+                            </a>
+                        </div>
+                    `;
+                }).join('');
+
+            } catch (error) {
+                console.error("Error rendering epic works:", error);
+                document.getElementById('epic-works-list').innerHTML = '<p class="text-red-500 col-span-full text-center">Erro ao carregar os trabalhos.</p>';
             }
         }
 
@@ -704,11 +783,13 @@
                         <nav class="-mb-px flex space-x-6 overflow-x-auto" aria-label="Tabs">
                             <a href="#" data-tab="students" class="teacher-tab active whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">Gerenciar Devs</a>
                             <a href="#" data-tab="quests" class="teacher-tab whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">Gerenciar Quests</a>
+                            <a href="#" data-tab="epic-works" class="teacher-tab whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">Trabalhos Épicos</a>
                             <a href="#" data-tab="messages" class="teacher-tab whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">Enviar Mensagens</a>
                         </nav>
                     </div>
                     <div id="tab-content-students" class="teacher-tab-content active"></div>
                     <div id="tab-content-quests" class="teacher-tab-content"></div>
+                    <div id="tab-content-epic-works" class="teacher-tab-content"></div>
                     <div id="tab-content-messages" class="teacher-tab-content"></div>`;
             }
 
@@ -870,6 +951,45 @@
             });
             unsubscribeListeners.push(unsub);
         }
+
+        async function renderEpicWorksTab() {
+            const container = document.getElementById('tab-content-epic-works');
+            if(!container) return;
+            container.innerHTML = `
+                <div class="flex justify-between items-center mb-4">
+                  <h2 class="font-game text-xl text-purple-400">Trabalhos Épicos</h2>
+                  <button class="add-epic-work-btn bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded-lg"><i class="fas fa-plus mr-2"></i>Registrar Trabalho</button>
+                </div>
+                <div id="epic-works-teacher-list" class="space-y-4">Carregando...</div>`;
+
+            const q = query(collection(db, "epicWorks"), where("teacherId", "==", currentTeacher.uid));
+            const unsub = onSnapshot(q, (snapshot) => {
+                const listContainer = document.getElementById('epic-works-teacher-list');
+                if (!listContainer) return;
+                if (snapshot.empty) {
+                    listContainer.innerHTML = '<p class="text-center text-gray-400">Nenhum trabalho épico registrado.</p>';
+                    return;
+                }
+                const sortedDocs = snapshot.docs.sort((a, b) => b.data().timestamp.toDate() - a.data().timestamp.toDate());
+                listContainer.innerHTML = sortedDocs.map(doc => {
+                    const work = { id: doc.id, ...doc.data() };
+                    return `
+                        <div class="glass-effect p-4 rounded-lg flex justify-between items-center">
+                            <div>
+                                <h3 class="font-bold text-lg text-purple-300">${work.questTitle}</h3>
+                                <p class="text-sm text-gray-400">Alunos: ${work.studentNames.join(', ')}</p>
+                                <a href="${work.workLink}" target="_blank" class="text-xs text-cyan-400 hover:underline">${work.workLink}</a>
+                            </div>
+                            <div class="flex space-x-2">
+                                <button data-id="${work.id}" class="edit-epic-work-btn text-blue-400 hover:text-blue-300 p-2"><i class="fas fa-pencil-alt"></i></button>
+                                <button data-id="${work.id}" class="delete-epic-work-btn text-red-500 hover:text-red-400 p-2"><i class="fas fa-trash"></i></button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            });
+            unsubscribeListeners.push(unsub);
+        }
         
         async function renderMessagesTab() {
             const container = document.getElementById('tab-content-messages');
@@ -915,7 +1035,6 @@
             
             const questsQuery = query(collection(db, "quests"), where("turmas", "array-contains", studentTurma));
             const questsSnapshot = await getDocs(questsQuery);
-            
             const sortedQuests = questsSnapshot.docs.sort((a,b) => b.data().endDate.toDate() - a.data().endDate.toDate());
 
             const submissionsQuery = query(collection(db, "submissions"), where("studentId", "==", studentId));
@@ -925,6 +1044,10 @@
                 const data = doc.data();
                 studentSubmissions[data.questId] = { score: data.score, status: data.status };
             });
+
+            const epicWorksQuery = query(collection(db, "epicWorks"), where("studentIds", "array-contains", studentId));
+            const epicWorksSnapshot = await getDocs(epicWorksQuery);
+            const epicQuestIds = epicWorksSnapshot.docs.map(doc => doc.data().questId);
             
             if(sortedQuests.length === 0){
                 timelineContainer.innerHTML = '<p class="text-gray-400">Nenhuma quest foi atribuída para sua turma ainda.</p>';
@@ -935,12 +1058,14 @@
                 const quest = doc.data();
                 const questId = doc.id;
                 const submission = studentSubmissions[questId];
+                const isEpic = epicQuestIds.includes(questId);
                 
                 let icon = 'fa-hourglass-half text-yellow-400';
                 let xpText = `Vale até ${quest.maxXp} XP`;
+                let epicClass = isEpic ? 'epic-highlight' : '';
 
                 if (submission) {
-                    icon = 'fa-check-circle text-green-400';
+                    icon = isEpic ? 'fa-meteor text-purple-400' : 'fa-check-circle text-green-400';
                     xpText = `Você ganhou ${submission.score} XP`;
                 } else if (quest.endDate.toDate() < new Date()) {
                     icon = 'fa-times-circle text-red-400';
@@ -950,14 +1075,14 @@
                 return `
                     <div class="flex items-start space-x-4">
                         <div class="flex flex-col items-center flex-shrink-0">
-                            <div class="w-12 h-12 rounded-full bg-gray-700 flex items-center justify-center">
+                            <div class="w-12 h-12 rounded-full bg-gray-700 flex items-center justify-center ${epicClass}">
                                 <i class="fas ${icon} text-2xl"></i>
                             </div>
                             <div class="w-0.5 h-16 bg-gray-600 mt-2"></div>
                         </div>
-                        <div class="glass-effect p-4 rounded-lg flex-1">
+                        <div class="glass-effect p-4 rounded-lg flex-1 ${epicClass}">
                             <div class="flex justify-between items-center flex-wrap gap-2">
-                                <h3 class="font-bold text-lg text-cyan-300">${quest.title}</h3>
+                                <h3 class="font-bold text-lg ${isEpic ? 'text-purple-300' : 'text-cyan-300'}">${quest.title} ${isEpic ? '(ÉPICO!)' : ''}</h3>
                                 <span class="text-sm font-semibold text-lime-400 whitespace-nowrap">${xpText}</span>
                             </div>
                             <p class="text-gray-400 text-sm mt-1">${quest.description}</p>
@@ -1168,6 +1293,92 @@
                 </div>`;
             showModal(modalHTML);
         }
+
+        async function handleEpicWorkModal(epicWorkId = null) {
+            let epicWork = { questId: '', workLink: '', studentIds: [] };
+            if (epicWorkId) {
+                const docSnap = await getDoc(doc(db, 'epicWorks', epicWorkId));
+                epicWork = docSnap.data();
+            }
+
+            const questsQuery = query(collection(db, "quests"), where("teacherId", "==", currentTeacher.uid));
+            const questsSnapshot = await getDocs(questsQuery);
+            const questsOptions = questsSnapshot.docs.map(doc => {
+                const quest = { id: doc.id, ...doc.data() };
+                const selected = quest.id === epicWork.questId ? 'selected' : '';
+                return `<option value="${quest.id}" data-turmas='${JSON.stringify(quest.turmas)}' ${selected}>${quest.title}</option>`;
+            }).join('');
+
+            const modalHTML = `
+                <div class="modal-backdrop">
+                    <div class="modal-content glass-effect p-8 rounded-2xl">
+                        <h3 class="font-game text-xl text-purple-400 mb-6">${epicWorkId ? 'Editar' : 'Registrar'} Trabalho Épico</h3>
+                        <form id="epic-work-form" data-id="${epicWorkId || ''}" class="space-y-4">
+                            <div>
+                                <label for="epic-quest-select" class="block mb-2 text-sm font-medium">Quest Associada</label>
+                                <select id="epic-quest-select" required class="w-full bg-gray-800 p-2 rounded-lg">
+                                    <option value="">-- Selecione uma Quest --</option>
+                                    ${questsOptions}
+                                </select>
+                            </div>
+                            <div>
+                                <label for="epic-work-link" class="block mb-2 text-sm font-medium">Link para o Trabalho</label>
+                                <input id="epic-work-link" type="url" placeholder="https://github.com/..." required class="w-full bg-gray-800 p-2 rounded-lg" value="${epicWork.workLink}">
+                            </div>
+                            <div>
+                                <label class="block mb-2 text-sm font-medium">Alunos Envolvidos</label>
+                                <div id="epic-students-checkboxes" class="space-y-2 max-h-40 overflow-y-auto bg-gray-900 p-2 rounded-lg">
+                                    <p class="text-gray-500">Selecione uma quest para ver os alunos.</p>
+                                </div>
+                            </div>
+                             <div class="flex justify-end space-x-4 mt-8">
+                                <button type="button" class="modal-close-btn bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-6 rounded-lg">Cancelar</button>
+                                <button type="submit" class="bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-6 rounded-lg">Salvar</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>`;
+            showModal(modalHTML);
+
+            if (epicWorkId) {
+                await populateEpicStudentsSelect(epicWork.questId, epicWork.studentIds);
+            }
+        }
+
+        async function populateEpicStudentsSelect(questId, selectedStudentIds = []) {
+            const container = document.getElementById('epic-students-checkboxes');
+            if (!container) return;
+            
+            const questSelect = document.getElementById('epic-quest-select');
+            const selectedOption = questSelect.options[questSelect.selectedIndex];
+            const turmas = JSON.parse(selectedOption.dataset.turmas || '[]');
+
+            if (turmas.length === 0) {
+                container.innerHTML = '<p class="text-gray-500">Esta quest não está associada a nenhuma turma.</p>';
+                return;
+            }
+
+            container.innerHTML = '<p class="text-gray-500">Carregando alunos...</p>';
+            const studentsQuery = query(collection(db, "students"), where("teacherId", "==", currentTeacher.uid), where("turma", "in", turmas));
+            const studentsSnapshot = await getDocs(studentsQuery);
+
+            if (studentsSnapshot.empty) {
+                container.innerHTML = '<p class="text-gray-500">Nenhum aluno encontrado para a(s) turma(s) desta quest.</p>';
+                return;
+            }
+
+            container.innerHTML = studentsSnapshot.docs.map(doc => {
+                const student = { id: doc.id, ...doc.data() };
+                const checked = selectedStudentIds.includes(student.id) ? 'checked' : '';
+                return `
+                    <label class="flex items-center space-x-3 p-2 hover:bg-gray-700 rounded-md">
+                        <input type="checkbox" name="epic-students" value="${student.id}" data-name="${student.name}" class="w-4 h-4 text-purple-600 bg-gray-700 border-gray-600 rounded" ${checked}>
+                        <span>${student.name}</span>
+                    </label>
+                `;
+            }).join('');
+        }
+
 
         // --- Initial Load ---
         renderLoginView();

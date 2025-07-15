@@ -89,13 +89,12 @@
 
         // --- IMPORTANT: PASTE YOUR FIREBASE CONFIGURATION HERE ---
         const firebaseConfig = {
-  apiKey: "AIzaSyDv0qbKmHe3CKNMez7A1YyBN4ZXWhNqaXo",
-  authDomain: "portal-de-notas-gamificado.firebaseapp.com",
-  projectId: "portal-de-notas-gamificado",
-  storageBucket: "portal-de-notas-gamificado.firebasestorage.app",
-  messagingSenderId: "379073119299",
-  appId: "1:379073119299:web:d9655747ce1d865a3fc0f6",
-  measurementId: "G-HM5WXQ13FW"
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_AUTH_DOMAIN",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_STORAGE_BUCKET",
+            messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+            appId: "YOUR_APP_ID"
         };
         // ---------------------------------------------------------
 
@@ -107,7 +106,6 @@
         // --- App State ---
         let currentTeacher = null;
         let unsubscribeListeners = [];
-        let allEpicWorks = []; // Cache for epic works
         const appContainer = document.getElementById('app-container');
         const modalContainer = document.getElementById('modal-container');
         const loadingSpinner = document.getElementById('loading-spinner');
@@ -174,12 +172,6 @@
                 return;
             }
 
-            if (target.type === 'submit') {
-                return;
-            }
-            
-            e.preventDefault();
-
             const actionMap = {
                 'show-register-link': renderRegisterView,
                 'show-login-link': renderLoginView,
@@ -195,20 +187,20 @@
                 'edit-quest-btn': () => handleQuestModal(target.dataset.id),
                 'delete-quest-btn': () => handleDeleteQuest(target.dataset.id),
                 'grade-quest-btn': () => handleGradingModal(target.dataset.id),
-                'import-grades-btn': () => handleImportGradesModal(target.dataset.questId),
                 'add-epic-work-btn': () => handleEpicWorkModal(),
                 'edit-epic-work-btn': () => handleEpicWorkModal(target.dataset.id),
                 'delete-epic-work-btn': () => handleDeleteEpicWork(target.dataset.id),
                 'approve-btn': () => handleTeacherApproval(target.dataset.id, true),
                 'reject-btn': () => handleTeacherApproval(target.dataset.id, false),
-                'show-all-epic-works': () => renderEpicWorksShowcase(true)
             };
 
             const actionKey = Object.keys(actionMap).find(key => target.id === key || target.classList.contains(key));
             
             if (actionKey) {
+                e.preventDefault();
                 actionMap[actionKey]();
             } else if (target.classList.contains('teacher-tab')) {
+                e.preventDefault();
                 handleTabSwitch(target);
             }
         }
@@ -225,7 +217,6 @@
             if (target.id === 'import-student-form') handleStudentImport(target);
             if (target.id === 'import-quest-form') handleQuestImport(target);
             if (target.id === 'epic-work-form') handleEpicWorkFormSubmit(target);
-            if (target.id === 'import-grades-form') handleGradeImport(target);
         }
 
         function handleChange(e) {
@@ -577,86 +568,6 @@
                 await deleteDoc(doc(db, "epicWorks", epicWorkId));
                 showAlert('Trabalho Épico removido.');
             } catch (error) { showAlert(`Erro ao remover: ${error.message}`, 'error'); }
-        }
-
-        async function handleGradeImport(form) {
-            const questId = form.dataset.questId;
-            const file = form.querySelector('#csv-file-grades').files[0];
-            if (!file) return showAlert('Por favor, selecione um arquivo.', 'error');
-
-            loadingSpinner.style.display = 'flex';
-
-            const reader = new FileReader();
-            reader.onload = async (event) => {
-                try {
-                    const csv = event.target.result;
-                    const lines = csv.split('\n').filter(line => line.trim() !== '');
-                    if (lines.length <= 1) {
-                        loadingSpinner.style.display = 'none';
-                        return showAlert('Arquivo CSV vazio ou com apenas cabeçalho.', 'error');
-                    }
-
-                    const header = lines[0].trim().split(',');
-                    if (header[0] !== 'matricula' || header[1] !== 'xp_ganho') {
-                        loadingSpinner.style.display = 'none';
-                        return showAlert('Cabeçalho do CSV inválido. Use: matricula,xp_ganho', 'error');
-                    }
-
-                    const batch = writeBatch(db);
-                    let processedCount = 0;
-
-                    const allStudentsQuery = query(collection(db, "students"), where("teacherId", "==", currentTeacher.uid));
-                    const studentsSnapshot = await getDocs(allStudentsQuery);
-                    const studentMap = new Map();
-                    studentsSnapshot.forEach(doc => {
-                        studentMap.set(doc.data().matricula, doc.id);
-                    });
-                    
-                    const submissionsQuery = query(collection(db, "submissions"), where("questId", "==", questId));
-                    const submissionsSnapshot = await getDocs(submissionsQuery);
-                    const originalScores = new Map();
-                    submissionsSnapshot.forEach(doc => {
-                        originalScores.set(doc.data().studentId, doc.data().score);
-                    });
-
-                    for (let i = 1; i < lines.length; i++) {
-                        const values = lines[i].trim().split(',');
-                        const matricula = values[0];
-                        const newScore = parseInt(values[1], 10);
-
-                        if (matricula && !isNaN(newScore)) {
-                            const studentId = studentMap.get(matricula);
-                            if (studentId) {
-                                const submissionId = `${studentId}_${questId}`;
-                                const submissionRef = doc(db, "submissions", submissionId);
-                                const studentRef = doc(db, "students", studentId);
-                                
-                                const originalScore = originalScores.get(studentId) || 0;
-                                const xpDifference = newScore - originalScore;
-
-                                batch.set(submissionRef, {
-                                    studentId, questId, score: newScore, status: 'completed', teacherId: currentTeacher.uid
-                                }, { merge: true });
-                                
-                                if (xpDifference !== 0) {
-                                    batch.update(studentRef, { totalXP: increment(xpDifference) });
-                                }
-                                processedCount++;
-                            }
-                        }
-                    }
-
-                    await batch.commit();
-                    loadingSpinner.style.display = 'none';
-                    showAlert(`${processedCount} notas importadas com sucesso!`);
-                    hideModal();
-
-                } catch (error) {
-                    loadingSpinner.style.display = 'none';
-                    showAlert(`Erro ao importar notas: ${error.message}`, 'error');
-                }
-            };
-            reader.readAsText(file);
         }
         
         // --- VIEW & COMPONENT RENDERING (The HTML Generators) ---
@@ -1307,16 +1218,15 @@
             
             showModal(`<div class="modal-backdrop"><div class="modal-content glass-effect p-8 rounded-2xl"><p>Carregando alunos...</p></div></div>`);
             
-            const studentsQuery = query(collection(db, "students"), where("teacherId", "==", currentTeacher.uid));
+            const studentsQuery = query(collection(db, "students"), where("turma", "in", quest.turmas), where("teacherId", "==", currentTeacher.uid));
             const studentsSnapshot = await getDocs(studentsQuery);
-            const studentsInTurmas = studentsSnapshot.docs.filter(doc => quest.turmas.includes(doc.data().turma));
 
             const submissionsQuery = query(collection(db, "submissions"), where("questId", "==", questId));
             const submissionsSnapshot = await getDocs(submissionsQuery);
             const submissions = {};
             submissionsSnapshot.forEach(s => submissions[s.data().studentId] = s.data().score);
 
-            const studentInputs = studentsInTurmas.map(sDoc => {
+            const studentInputs = studentsSnapshot.docs.map(sDoc => {
                 const student = {id: sDoc.id, ...sDoc.data()};
                 const score = submissions[student.id] || 0;
                 return `
@@ -1330,10 +1240,7 @@
             const modalHTML = `
                 <div class="modal-backdrop">
                     <div class="modal-content glass-effect p-8 rounded-2xl">
-                        <div class="flex justify-between items-center mb-6">
-                            <h3 class="font-game text-xl text-yellow-400">Lançar XP: ${quest.title}</h3>
-                            <button id="import-grades-btn" data-quest-id="${questId}" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg text-sm"><i class="fas fa-upload mr-2"></i>Importar Notas</button>
-                        </div>
+                        <h3 class="font-game text-xl text-yellow-400 mb-6">Lançar XP para: ${quest.title}</h3>
                         <form id="grading-form" data-quest-id="${questId}" class="space-y-3">
                             <div class="max-h-64 overflow-y-auto space-y-3 pr-2">
                                 ${studentInputs || '<p>Nenhum aluno encontrado para as turmas desta Quest.</p>'}
@@ -1387,36 +1294,6 @@
             showModal(modalHTML);
         }
 
-        async function handleImportGradesModal(questId) {
-            const questDoc = await getDoc(doc(db, "quests", questId));
-            if (!questDoc.exists()) return showAlert('Quest não encontrada!', 'error');
-
-            const studentsQuery = query(collection(db, "students"), where("teacherId", "==", currentTeacher.uid), where("turma", "in", questDoc.data().turmas));
-            const studentsSnapshot = await getDocs(studentsQuery);
-            let csvContent = "matricula,xp_ganho\n";
-            studentsSnapshot.docs.forEach(doc => {
-                csvContent += `${doc.data().matricula},0\n`;
-            });
-            const encodedUri = encodeURI("data:text/csv;charset=utf-8," + csvContent);
-
-            const modalHTML = `
-                <div class="modal-backdrop">
-                    <div class="modal-content glass-effect p-8 rounded-2xl">
-                        <h3 class="font-game text-xl text-blue-400 mb-6">Importar Notas para "${questDoc.data().title}"</h3>
-                        <form id="import-grades-form" data-quest-id="${questId}" class="space-y-4">
-                            <p class="text-gray-300">Selecione um arquivo CSV com as colunas: <code class="bg-gray-900 p-1 rounded">matricula,xp_ganho</code></p>
-                            <a href="${encodedUri}" download="template_notas_${questId}.csv" class="text-cyan-400 hover:underline">Descarregar modelo com alunos da turma</a>
-                            <input type="file" id="csv-file-grades" accept=".csv" required class="w-full text-gray-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-500 file:text-white hover:file:bg-blue-600">
-                            <div class="flex justify-end space-x-4 mt-8">
-                                <button type="button" class="modal-close-btn bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-6 rounded-lg">Cancelar</button>
-                                <button type="submit" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-6 rounded-lg">Processar</button>
-                            </div>
-                        </form>
-                    </div>
-                </div>`;
-            showModal(modalHTML);
-        }
-
         async function handleEpicWorkModal(epicWorkId = null) {
             let epicWork = { questId: '', workLink: '', studentIds: [] };
             if (epicWorkId) {
@@ -1446,7 +1323,7 @@
                             </div>
                             <div>
                                 <label for="epic-work-link" class="block mb-2 text-sm font-medium">Link para o Trabalho</label>
-                                <input id="epic-work-link" type="url" placeholder="https://github.com/..." required class="w-full bg-gray-800 p-2 rounded-lg" value="${epicWork.workLink || ''}">
+                                <input id="epic-work-link" type="url" placeholder="https://github.com/..." required class="w-full bg-gray-800 p-2 rounded-lg" value="${epicWork.workLink}">
                             </div>
                             <div>
                                 <label class="block mb-2 text-sm font-medium">Alunos Envolvidos</label>
@@ -1474,11 +1351,7 @@
             
             const questSelect = document.getElementById('epic-quest-select');
             const selectedOption = questSelect.options[questSelect.selectedIndex];
-            if (!selectedOption || !selectedOption.dataset.turmas) {
-                container.innerHTML = '<p class="text-gray-500">Selecione uma quest válida.</p>';
-                return;
-            }
-            const turmas = JSON.parse(selectedOption.dataset.turmas);
+            const turmas = JSON.parse(selectedOption.dataset.turmas || '[]');
 
             if (turmas.length === 0) {
                 container.innerHTML = '<p class="text-gray-500">Esta quest não está associada a nenhuma turma.</p>';

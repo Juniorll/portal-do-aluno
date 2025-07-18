@@ -1301,15 +1301,16 @@
             
             showModal(`<div class="modal-backdrop"><div class="modal-content glass-effect p-8 rounded-2xl"><p>Carregando alunos...</p></div></div>`);
             
-            const studentsQuery = query(collection(db, "students"), where("turma", "in", quest.turmas), where("teacherId", "==", currentTeacher.uid));
+            const studentsQuery = query(collection(db, "students"), where("teacherId", "==", currentTeacher.uid));
             const studentsSnapshot = await getDocs(studentsQuery);
+            const studentsInTurmas = studentsSnapshot.docs.filter(doc => quest.turmas.includes(doc.data().turma));
 
             const submissionsQuery = query(collection(db, "submissions"), where("questId", "==", questId));
             const submissionsSnapshot = await getDocs(submissionsQuery);
             const submissions = {};
             submissionsSnapshot.forEach(s => submissions[s.data().studentId] = s.data().score);
 
-            const studentInputs = studentsSnapshot.docs.map(sDoc => {
+            const studentInputs = studentsInTurmas.map(sDoc => {
                 const student = {id: sDoc.id, ...sDoc.data()};
                 const score = submissions[student.id] || 0;
                 return `
@@ -1384,7 +1385,7 @@
             const questDoc = await getDoc(doc(db, "quests", questId));
             if (!questDoc.exists()) return showAlert('Quest não encontrada!', 'error');
 
-            const studentsQuery = query(collection(db, "students"), where("turma", "in", questDoc.data().turmas), where("teacherId", "==", currentTeacher.uid));
+            const studentsQuery = query(collection(db, "students"), where("teacherId", "==", currentTeacher.uid), where("turma", "in", questDoc.data().turmas));
             const studentsSnapshot = await getDocs(studentsQuery);
             let csvContent = "matricula,xp_ganho\n";
             studentsSnapshot.docs.forEach(doc => {

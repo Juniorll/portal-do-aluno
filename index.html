@@ -1702,30 +1702,40 @@
         }
 
         function getGradeFeedback(grade) {
-            if (grade >= 9.5) {
+            if (grade >= 9.1) {
                 return {
-                    message: "Lendário! Você transcendeu os limites do código!",
-                    gif: "https://media.giphy.com/media/NEvPzZ8bd1V4Y/giphy.gif"
+                    message: "Incrível! Um desempenho espetacular que inspira a todos. Parabéns!",
+                    gif: "https://media.giphy.com/media/26DOMeaD2gdGE44LK/giphy.gif"
                 };
-            } else if (grade >= 8.5) {
+            } else if (grade >= 8.1) {
                 return {
-                    message: "Excelente! Seu código é elegante e poderoso.",
-                    gif: "https://media.giphy.com/media/3o7abGQa0aRfpOzdXq/giphy.gif"
+                    message: "Excelente trabalho! Você demonstrou um grande domínio e dedicação.",
+                    gif: "https://media.giphy.com/media/l4q8cJzGdLvzgyWwE/giphy.gif"
                 };
-            } else if (grade >= 7.0) {
+            } else if (grade >= 7.1) {
                 return {
-                    message: "Muito bom! Você está no caminho certo para a maestria.",
-                    gif: "https://media.giphy.com/media/YTbZzCkRQCEJa/giphy.gif"
+                    message: "Muito bem! Um ótimo resultado, fruto do seu esforço e empenho.",
+                    gif: "https://media.giphy.com/media/cXblnKXr2BQOaYnTni/giphy.gif"
                 };
-            } else if (grade >= 6.0) {
+            } else if (grade >= 6) {
                 return {
-                    message: "Na média! Passou, mas sei que você pode grindar mais XP da próxima vez!",
-                    gif: "https://media.giphy.com/media/11sBLVxNs7v6WA/giphy.gif" 
+                    message: "Na média! Você atingiu o objetivo. Continue assim para ir ainda mais longe!",
+                    gif: "https://media.giphy.com/media/l41lZxzroU33typuU/giphy.gif"
                 };
-            } else {
+            } else if (grade >= 4.1) {
                 return {
-                    message: "Ops, game over desta vez. Mas todo dev tem seus bugs para corrigir. Vamos para a próxima fase!",
-                    gif: "https://media.giphy.com/media/3o7aDczpCChgB383te/giphy.gif"
+                    message: "Quase lá! Faltou pouco. Com um pouco mais de foco, você chega lá na próxima!",
+                    gif: "https://media.giphy.com/media/d2jjuAZzDSVLZ5kI/giphy.gif"
+                };
+            } else if (grade >= 2.1) {
+                return {
+                    message: "Não desanime! Toda jornada tem seus desafios. Use isso como aprendizado e volte mais forte.",
+                    gif: "https://media.giphy.com/media/d2Z4rTi11c9p1QoE/giphy.gif"
+                };
+            } else { // 0 to 2
+                return {
+                    message: "Acontece! O importante é não desistir. Vamos rever a matéria e tentar de novo!",
+                    gif: "https://media.giphy.com/media/l41YmiCZ8HXvVl5M4/giphy.gif"
                 };
             }
         }
@@ -1750,7 +1760,7 @@
                             <img src="${feedback.gif}" alt="${feedback.message}" class="rounded-lg w-full max-w-xs mx-auto">
                         </div>
                     `;
-                }).join('');
+                }).join('<div class="my-2 border-b border-gray-700"></div>');
             }
             
             const modalHTML = `

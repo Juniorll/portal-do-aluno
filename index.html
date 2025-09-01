@@ -353,7 +353,6 @@
         async function handleDeleteStudent(studentId) {
             if (!window.confirm('Tem certeza que deseja remover este Dev? Todas as suas notas e resultados serão perdidos.')) return;
             try {
-                // Also delete past results associated with the student
                 const q = query(collection(db, "pastResults"), where("studentId", "==", studentId));
                 const snapshot = await getDocs(q);
                 const batch = writeBatch(db);

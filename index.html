@@ -146,21 +146,28 @@
 
         // --- AUTHENTICATION ---
         onAuthStateChanged(auth, async (user) => {
-            if (user) {
-                const userDoc = await getDoc(doc(db, "users", user.uid));
-                if (userDoc.exists()) {
-                    const userData = userDoc.data();
-                    currentTeacher = { uid: user.uid, ...userData };
-                    if (userData.role === 'admin') await renderAdminDashboard();
-                    else if (userData.role === 'teacher') await renderTeacherDashboard();
+            try {
+                if (user) {
+                    const userDoc = await getDoc(doc(db, "users", user.uid));
+                    if (userDoc.exists()) {
+                        const userData = userDoc.data();
+                        currentTeacher = { uid: user.uid, ...userData };
+                        if (userData.role === 'admin') await renderAdminDashboard();
+                        else if (userData.role === 'teacher') await renderTeacherDashboard();
+                        else await renderLoginView(); // Fallback for unknown roles
+                    } else {
+                        await signOut(auth); // User exists in Auth but not in Firestore
+                    }
                 } else {
-                    await signOut(auth);
+                    currentTeacher = null;
+                    await renderLoginView();
                 }
-            } else {
-                currentTeacher = null;
-                await renderLoginView();
+            } catch (error) {
+                console.error("Authentication state change error:", error);
+                await renderLoginView(); // Render login on error
+            } finally {
+                loadingSpinner.style.display = 'none';
             }
-            loadingSpinner.style.display = 'none';
         });
 
         // --- TOP-LEVEL EVENT HANDLERS ---
@@ -172,6 +179,9 @@
                 hideModal();
                 return;
             }
+
+            // Prevent default for all non-submit buttons/links with an action
+            const isSubmit = target.type === 'submit';
 
             const actionMap = {
                 'show-register-link': renderRegisterView,
@@ -204,7 +214,7 @@
             const actionKey = Object.keys(actionMap).find(key => target.id === key || target.classList.contains(key));
             
             if (actionKey) {
-                e.preventDefault();
+                if (!isSubmit) e.preventDefault();
                 actionMap[actionKey]();
             } else if (target.classList.contains('teacher-tab')) {
                 e.preventDefault();
@@ -353,7 +363,6 @@
         async function handleDeleteStudent(studentId) {
             if (!window.confirm('Tem certeza que deseja remover este Dev? Todas as suas notas e resultados serão perdidos.')) return;
             try {
-                // Also delete past results associated with the student
                 const q = query(collection(db, "pastResults"), where("studentId", "==", studentId));
                 const snapshot = await getDocs(q);
                 const batch = writeBatch(db);
@@ -879,7 +888,11 @@
                     return;
                 }
                 
-                const sortedWorks = snapshot.docs.sort((a,b) => b.data().timestamp.toDate() - a.data().timestamp.toDate());
+                const sortedWorks = snapshot.docs.sort((a,b) => {
+                    const timeA = a.data().timestamp?.toDate() || 0;
+                    const timeB = b.data().timestamp?.toDate() || 0;
+                    return timeB - timeA;
+                });
 
                 listContainer.innerHTML = sortedWorks.map(doc => {
                     const work = doc.data();
@@ -1121,7 +1134,11 @@
                     return;
                 }
                 
-                const sortedDocs = snapshot.docs.sort((a, b) => b.data().endDate.toDate() - a.data().endDate.toDate());
+                const sortedDocs = snapshot.docs.sort((a, b) => {
+                    const timeA = a.data().endDate?.toDate() || 0;
+                    const timeB = b.data().endDate?.toDate() || 0;
+                    return timeB - timeA;
+                });
 
                 listContainer.innerHTML = sortedDocs.map(doc => {
                     const quest = {id: doc.id, ...doc.data()};
@@ -1164,7 +1181,11 @@
                     listContainer.innerHTML = '<p class="text-center text-gray-400">Nenhum trabalho épico registrado.</p>';
                     return;
                 }
-                const sortedDocs = snapshot.docs.sort((a, b) => b.data().timestamp.toDate() - a.data().timestamp.toDate());
+                const sortedDocs = snapshot.docs.sort((a, b) => {
+                    const timeA = a.data().timestamp?.toDate() || 0;
+                    const timeB = b.data().timestamp?.toDate() || 0;
+                    return timeB - timeA;
+                });
                 listContainer.innerHTML = sortedDocs.map(doc => {
                     const work = { id: doc.id, ...doc.data() };
                     return `
@@ -1291,7 +1312,11 @@
             
             const questsQuery = query(collection(db, "quests"), where("turmas", "array-contains", studentTurma));
             const questsSnapshot = await getDocs(questsQuery);
-            const sortedQuests = questsSnapshot.docs.sort((a,b) => b.data().endDate.toDate() - a.data().endDate.toDate());
+            const sortedQuests = questsSnapshot.docs.sort((a,b) => {
+                const timeA = a.data().endDate?.toDate() || 0;
+                const timeB = b.data().endDate?.toDate() || 0;
+                return timeB - timeA;
+            });
 
             const submissionsQuery = query(collection(db, "submissions"), where("studentId", "==", studentId));
             const submissionsSnapshot = await getDocs(submissionsQuery);
@@ -1358,7 +1383,11 @@
             const q = query(collection(db, "messages"), where("studentId", "==", studentId));
             const unsub = onSnapshot(q, (snapshot) => {
                 if(!snapshot.empty) {
-                    const sortedMessages = snapshot.docs.sort((a,b) => b.data().timestamp.toDate() - a.data().timestamp.toDate());
+                    const sortedMessages = snapshot.docs.sort((a,b) => {
+                        const timeA = a.data().timestamp?.toDate() || 0;
+                        const timeB = b.data().timestamp?.toDate() || 0;
+                        return timeB - timeA;
+                    });
                     const message = sortedMessages[0].data(); // Show the latest
                     box.innerHTML = `
                         <h3 class="font-bold text-purple-300"><i class="fas fa-envelope mr-2"></i> Mensagem do seu Mestre:</h3>
@@ -1672,7 +1701,6 @@
                 `;
             }).join('');
         }
-
 
         // --- Initial Load ---
         renderLoginView();

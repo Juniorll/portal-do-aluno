@@ -172,7 +172,7 @@
                 hideModal();
                 return;
             }
-            
+
             const actionMap = {
                 'show-register-link': renderRegisterView,
                 'show-login-link': renderLoginView,
@@ -194,11 +194,6 @@
                 'delete-epic-work-btn': () => handleDeleteEpicWork(target.dataset.id),
                 'approve-btn': () => handleTeacherApproval(target.dataset.id, true),
                 'reject-btn': () => handleTeacherApproval(target.dataset.id, false),
-                'show-past-results-btn': () => handleStudentPastResultsModal(target.dataset.studentId),
-                'add-past-result-btn': () => handlePastResultModal(null, target.dataset.studentId),
-                'import-past-results-btn': handleImportPastResultsModal,
-                'edit-past-result-btn': () => handlePastResultModal(target.dataset.id),
-                'delete-past-result-btn': () => handleDeletePastResult(target.dataset.id),
             };
 
             const actionKey = Object.keys(actionMap).find(key => target.id === key || target.classList.contains(key));
@@ -225,8 +220,6 @@
             if (target.id === 'import-quest-form') handleQuestImport(target);
             if (target.id === 'epic-work-form') handleEpicWorkFormSubmit(target);
             if (target.id === 'import-grades-form') handleGradeImport(target);
-            if (target.id === 'past-result-form') handlePastResultFormSubmit(target);
-            if (target.id === 'import-past-results-form') handlePastResultImport(target);
         }
 
         function handleChange(e) {
@@ -324,7 +317,6 @@
                 if (tabName === 'quests') renderQuestsTab();
                 if (tabName === 'messages') renderMessagesTab();
                 if (tabName === 'epic-works') renderEpicWorksTab();
-                if (tabName === 'past-results') renderPastResultsTab();
             }
         }
         
@@ -351,14 +343,8 @@
         }
         
         async function handleDeleteStudent(studentId) {
-            if (!window.confirm('Tem certeza que deseja remover este Dev? Todas as suas notas e resultados serão perdidos.')) return;
+            if (!window.confirm('Tem certeza que deseja remover este Dev? Todas as suas notas serão perdidas.')) return;
             try {
-                const q = query(collection(db, "pastResults"), where("studentId", "==", studentId));
-                const snapshot = await getDocs(q);
-                const batch = writeBatch(db);
-                snapshot.forEach(doc => batch.delete(doc.ref));
-                await batch.commit();
-
                 await deleteDoc(doc(db, "students", studentId));
                 showAlert('Dev removido com sucesso.');
             } catch (error) { showAlert(`Erro ao remover: ${error.message}`, 'error'); }
@@ -665,97 +651,6 @@
                 }
             };
             reader.readAsText(file);
-        }
-
-        async function handlePastResultFormSubmit(form) {
-            const id = form.dataset.id;
-            const studentId = form.querySelector('#past-result-student-select').value;
-            const period = form.querySelector('#past-result-period').value.trim();
-            const grade = parseFloat(form.querySelector('#past-result-grade').value.replace(',', '.'));
-
-            if (!studentId || !period || isNaN(grade)) {
-                return showAlert('Preencha todos os campos corretamente.', 'error');
-            }
-
-            const resultData = { studentId, period, grade, teacherId: currentTeacher.uid };
-            
-            try {
-                if (id) {
-                    await updateDoc(doc(db, 'pastResults', id), resultData);
-                    showAlert('Resultado atualizado com sucesso!');
-                } else {
-                    await addDoc(collection(db, 'pastResults'), resultData);
-                    showAlert('Resultado anterior adicionado!');
-                }
-                hideModal();
-                renderPastResultsTab(); // Refresh the tab
-            } catch (error) {
-                 showAlert(`Erro ao salvar resultado: ${error.message}`, 'error');
-            }
-        }
-
-        async function handlePastResultImport(form) {
-            const file = form.querySelector('#csv-file-past-results').files[0];
-            if (!file) return showAlert('Por favor, selecione um arquivo.', 'error');
-
-            loadingSpinner.style.display = 'flex';
-            const reader = new FileReader();
-            reader.onload = async (event) => {
-                try {
-                    const csv = event.target.result;
-                    const lines = csv.split('\n').filter(line => line.trim() !== '');
-                    if (lines.length <= 1) {
-                        loadingSpinner.style.display = 'none';
-                        return showAlert('Arquivo CSV vazio ou com apenas cabeçalho.', 'error');
-                    }
-
-                    const header = lines[0].trim().split(',');
-                    if (header[0] !== 'matricula' || header[1] !== 'periodo' || header[2] !== 'nota_final') {
-                         loadingSpinner.style.display = 'none';
-                        return showAlert('Cabeçalho do CSV inválido. Use: matricula,periodo,nota_final', 'error');
-                    }
-
-                    const studentsQuery = query(collection(db, "students"), where("teacherId", "==", currentTeacher.uid));
-                    const studentsSnapshot = await getDocs(studentsQuery);
-                    const studentMap = new Map();
-                    studentsSnapshot.forEach(doc => studentMap.set(doc.data().matricula, doc.id));
-                    
-                    const batch = writeBatch(db);
-                    for (let i = 1; i < lines.length; i++) {
-                        const values = lines[i].trim().split(',');
-                        const matricula = values[0];
-                        const period = values[1];
-                        const grade = parseFloat(values[2].replace(',', '.'));
-                        const studentId = studentMap.get(matricula);
-
-                        if (studentId && period && !isNaN(grade)) {
-                            const newResultRef = doc(collection(db, "pastResults"));
-                            batch.set(newResultRef, { studentId, period, grade, teacherId: currentTeacher.uid });
-                        }
-                    }
-
-                    await batch.commit();
-                    loadingSpinner.style.display = 'none';
-                    showAlert('Resultados importados com sucesso!');
-                    hideModal();
-                    renderPastResultsTab();
-                } catch(e) {
-                    loadingSpinner.style.display = 'none';
-                    showAlert(`Erro ao importar: ${e.message}`, 'error');
-                }
-            };
-            reader.readAsText(file);
-        }
-
-        async function handleDeletePastResult(resultId) {
-            if (!window.confirm('Tem certeza que deseja apagar este resultado?')) return;
-            try {
-                await deleteDoc(doc(db, "pastResults", resultId));
-                showAlert('Resultado removido.');
-                renderPastResultsTab();
-            } catch (error) {
-                showAlert(`Erro ao apagar: ${error.message}`, 'error');
-            }
         }
         
         // --- VIEW & COMPONENT RENDERING (The HTML Generators) ---

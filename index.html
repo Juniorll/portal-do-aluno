@@ -1705,37 +1705,37 @@
             if (grade >= 9.1) {
                 return {
                     message: "Incrível! Um desempenho espetacular que inspira a todos. Parabéns!",
-                    gif: "https://media.giphy.com/media/26ufdipQqU2lhHd4c/giphy.gif"
+                    img: "https://i.imgur.com/tl46s9u.jpeg" // Galaxy Brain
                 };
             } else if (grade >= 8.1) {
                 return {
                     message: "Excelente trabalho! Você demonstrou um grande domínio e dedicação.",
-                    gif: "https://media.giphy.com/media/d31w24psGYz7sCwo/giphy.gif"
+                    img: "https://i.imgur.com/vBq47yS.jpeg" // Drake approving
                 };
             } else if (grade >= 7.1) {
                 return {
                     message: "Muito bem! Um ótimo resultado, fruto do seu esforço e empenho.",
-                    gif: "https://media.giphy.com/media/YTbZzCkRQCEJa/giphy.gif"
+                    img: "https://i.imgur.com/Jz2cT1I.jpeg" // Thumbs up kid
                 };
             } else if (grade >= 6) {
                 return {
                     message: "Na média! Você atingiu o objetivo. Continue assim para ir ainda mais longe!",
-                    gif: "https://media.giphy.com/media/l0HlJDaeqNUDhT9qE/giphy.gif"
+                    img: "https://i.imgur.com/3hG6gBD.jpeg" // Salt Bae
                 };
             } else if (grade >= 4.1) {
                 return {
                     message: "Alerta! Este resultado está abaixo do esperado e a responsabilidade é sua. É preciso mais dedicação para reverter a situação.",
-                    gif: "https://media.giphy.com/media/3o7527pa7qs9kCG78A/giphy.gif"
+                    img: "https://i.imgur.com/z4z4p1E.jpeg" // Disappointed Cricket Fan
                 };
             } else if (grade >= 2.1) {
                 return {
                     message: "Cuidado! Seu desempenho foi muito baixo. Reavalie seus métodos de estudo e assuma a responsabilidade pelo seu aprendizado.",
-                    gif: "https://media.giphy.com/media/mCdhhsCL0rTMo/giphy.gif"
+                    img: "https://i.imgur.com/EVtT3bE.png" // Panik
                 };
             } else { // 0 to 2
                 return {
                     message: "Resultado crítico. A responsabilidade é sua. É urgente uma mudança drástica de postura nos estudos para não ser reprovado.",
-                    gif: "https://media.giphy.com/media/LTpmgU6uR448I/giphy.gif"
+                    img: "https://i.imgur.com/c4jt321.png" // This is Fine
                 };
             }
         }
@@ -1757,7 +1757,7 @@
                                 <p class="font-game text-2xl text-lime-400 my-2">${result.grade.toFixed(1)}</p>
                                 <p class="text-sm italic text-gray-300">"${feedback.message}"</p>
                             </div>
-                            <img src="${feedback.gif}" alt="${feedback.message}" class="rounded-lg w-full max-w-xs mx-auto">
+                            <img src="${feedback.img}" alt="${feedback.message}" class="rounded-lg w-full max-w-xs mx-auto">
                         </div>
                     `;
                 }).join('<div class="my-2 border-b border-gray-700"></div>');

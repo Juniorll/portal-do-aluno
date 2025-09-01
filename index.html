@@ -89,13 +89,12 @@
 
         // --- IMPORTANT: PASTE YOUR FIREBASE CONFIGURATION HERE ---
         const firebaseConfig = {
-  apiKey: "AIzaSyDv0qbKmHe3CKNMez7A1YyBN4ZXWhNqaXo",
-  authDomain: "portal-de-notas-gamificado.firebaseapp.com",
-  projectId: "portal-de-notas-gamificado",
-  storageBucket: "portal-de-notas-gamificado.firebasestorage.app",
-  messagingSenderId: "379073119299",
-  appId: "1:379073119299:web:d9655747ce1d865a3fc0f6",
-  measurementId: "G-HM5WXQ13FW"
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_AUTH_DOMAIN",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_STORAGE_BUCKET",
+            messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+            appId: "YOUR_APP_ID"
         };
         // ---------------------------------------------------------
 
@@ -172,7 +171,7 @@
                 hideModal();
                 return;
             }
-
+            
             const actionMap = {
                 'show-register-link': renderRegisterView,
                 'show-login-link': renderLoginView,
@@ -194,6 +193,11 @@
                 'delete-epic-work-btn': () => handleDeleteEpicWork(target.dataset.id),
                 'approve-btn': () => handleTeacherApproval(target.dataset.id, true),
                 'reject-btn': () => handleTeacherApproval(target.dataset.id, false),
+                'show-past-results-btn': () => handleStudentPastResultsModal(target.dataset.studentId),
+                'add-past-result-btn': () => handlePastResultModal(null, target.dataset.studentId),
+                'import-past-results-btn': handleImportPastResultsModal,
+                'edit-past-result-btn': () => handlePastResultModal(target.dataset.id),
+                'delete-past-result-btn': () => handleDeletePastResult(target.dataset.id),
             };
 
             const actionKey = Object.keys(actionMap).find(key => target.id === key || target.classList.contains(key));
@@ -220,6 +224,8 @@
             if (target.id === 'import-quest-form') handleQuestImport(target);
             if (target.id === 'epic-work-form') handleEpicWorkFormSubmit(target);
             if (target.id === 'import-grades-form') handleGradeImport(target);
+            if (target.id === 'past-result-form') handlePastResultFormSubmit(target);
+            if (target.id === 'import-past-results-form') handlePastResultImport(target);
         }
 
         function handleChange(e) {
@@ -317,6 +323,7 @@
                 if (tabName === 'quests') renderQuestsTab();
                 if (tabName === 'messages') renderMessagesTab();
                 if (tabName === 'epic-works') renderEpicWorksTab();
+                if (tabName === 'past-results') renderPastResultsTab();
             }
         }
         
@@ -343,8 +350,15 @@
         }
         
         async function handleDeleteStudent(studentId) {
-            if (!window.confirm('Tem certeza que deseja remover este Dev? Todas as suas notas serão perdidas.')) return;
+            if (!window.confirm('Tem certeza que deseja remover este Dev? Todas as suas notas e resultados serão perdidos.')) return;
             try {
+                // Also delete past results associated with the student
+                const q = query(collection(db, "pastResults"), where("studentId", "==", studentId));
+                const snapshot = await getDocs(q);
+                const batch = writeBatch(db);
+                snapshot.forEach(doc => batch.delete(doc.ref));
+                await batch.commit();
+
                 await deleteDoc(doc(db, "students", studentId));
                 showAlert('Dev removido com sucesso.');
             } catch (error) { showAlert(`Erro ao remover: ${error.message}`, 'error'); }
@@ -652,6 +666,97 @@
             };
             reader.readAsText(file);
         }
+
+        async function handlePastResultFormSubmit(form) {
+            const id = form.dataset.id;
+            const studentId = form.querySelector('#past-result-student-select').value;
+            const period = form.querySelector('#past-result-period').value.trim();
+            const grade = parseFloat(form.querySelector('#past-result-grade').value.replace(',', '.'));
+
+            if (!studentId || !period || isNaN(grade)) {
+                return showAlert('Preencha todos os campos corretamente.', 'error');
+            }
+
+            const resultData = { studentId, period, grade, teacherId: currentTeacher.uid };
+            
+            try {
+                if (id) {
+                    await updateDoc(doc(db, 'pastResults', id), resultData);
+                    showAlert('Resultado atualizado com sucesso!');
+                } else {
+                    await addDoc(collection(db, 'pastResults'), resultData);
+                    showAlert('Resultado anterior adicionado!');
+                }
+                hideModal();
+                renderPastResultsTab(); // Refresh the tab
+            } catch (error) {
+                 showAlert(`Erro ao salvar resultado: ${error.message}`, 'error');
+            }
+        }
+
+        async function handlePastResultImport(form) {
+            const file = form.querySelector('#csv-file-past-results').files[0];
+            if (!file) return showAlert('Por favor, selecione um arquivo.', 'error');
+
+            loadingSpinner.style.display = 'flex';
+            const reader = new FileReader();
+            reader.onload = async (event) => {
+                try {
+                    const csv = event.target.result;
+                    const lines = csv.split('\n').filter(line => line.trim() !== '');
+                    if (lines.length <= 1) {
+                        loadingSpinner.style.display = 'none';
+                        return showAlert('Arquivo CSV vazio ou com apenas cabeçalho.', 'error');
+                    }
+
+                    const header = lines[0].trim().split(',');
+                    if (header[0] !== 'matricula' || header[1] !== 'periodo' || header[2] !== 'nota_final') {
+                         loadingSpinner.style.display = 'none';
+                        return showAlert('Cabeçalho do CSV inválido. Use: matricula,periodo,nota_final', 'error');
+                    }
+
+                    const studentsQuery = query(collection(db, "students"), where("teacherId", "==", currentTeacher.uid));
+                    const studentsSnapshot = await getDocs(studentsQuery);
+                    const studentMap = new Map();
+                    studentsSnapshot.forEach(doc => studentMap.set(doc.data().matricula, doc.id));
+                    
+                    const batch = writeBatch(db);
+                    for (let i = 1; i < lines.length; i++) {
+                        const values = lines[i].trim().split(',');
+                        const matricula = values[0];
+                        const period = values[1];
+                        const grade = parseFloat(values[2].replace(',', '.'));
+                        const studentId = studentMap.get(matricula);
+
+                        if (studentId && period && !isNaN(grade)) {
+                            const newResultRef = doc(collection(db, "pastResults"));
+                            batch.set(newResultRef, { studentId, period, grade, teacherId: currentTeacher.uid });
+                        }
+                    }
+
+                    await batch.commit();
+                    loadingSpinner.style.display = 'none';
+                    showAlert('Resultados importados com sucesso!');
+                    hideModal();
+                    renderPastResultsTab();
+                } catch(e) {
+                    loadingSpinner.style.display = 'none';
+                    showAlert(`Erro ao importar: ${e.message}`, 'error');
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        async function handleDeletePastResult(resultId) {
+            if (!window.confirm('Tem certeza que deseja apagar este resultado?')) return;
+            try {
+                await deleteDoc(doc(db, "pastResults", resultId));
+                showAlert('Resultado removido.');
+                renderPastResultsTab();
+            } catch (error) {
+                showAlert(`Erro ao apagar: ${error.message}`, 'error');
+            }
+        }
         
         // --- VIEW & COMPONENT RENDERING (The HTML Generators) ---
         
@@ -867,12 +972,14 @@
                             <a href="#" data-tab="students" class="teacher-tab active whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">Gerenciar Devs</a>
                             <a href="#" data-tab="quests" class="teacher-tab whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">Gerenciar Quests</a>
                             <a href="#" data-tab="epic-works" class="teacher-tab whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">Trabalhos Épicos</a>
+                            <a href="#" data-tab="past-results" class="teacher-tab whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">Resultados Anteriores</a>
                             <a href="#" data-tab="messages" class="teacher-tab whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">Enviar Mensagens</a>
                         </nav>
                     </div>
                     <div id="tab-content-students" class="teacher-tab-content active"></div>
                     <div id="tab-content-quests" class="teacher-tab-content"></div>
                     <div id="tab-content-epic-works" class="teacher-tab-content"></div>
+                    <div id="tab-content-past-results" class="teacher-tab-content"></div>
                     <div id="tab-content-messages" class="teacher-tab-content"></div>`;
             }
 
@@ -902,7 +1009,10 @@
                         <h1 class="font-game text-2xl md:text-3xl text-cyan-400">Jornada de ${studentData.name.split(' ')[0]}</h1>
                         <p id="student-level" class="text-lg text-lime-400 ${levelUpClass}"><i class="fas fa-star mr-2"></i>XP Total: ${studentData.totalXP || 0}</p>
                     </div>
-                    <button class="logout-btn bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg"><i class="fas fa-sign-out-alt mr-2"></i>Sair da Jornada</button>
+                    <div class="flex items-center gap-4">
+                        <button id="show-past-results-btn" data-student-id="${studentId}" class="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg"><i class="fas fa-history mr-2"></i>Períodos Anteriores</button>
+                        <button class="logout-btn bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg"><i class="fas fa-sign-out-alt mr-2"></i>Sair da Jornada</button>
+                    </div>
                 </header>
                 
                 <div id="personal-message-box" class="hidden glass-effect p-4 mb-6 bg-purple-500 bg-opacity-30 border border-purple-400 rounded-lg"></div>
@@ -1110,6 +1220,68 @@
             sortedDocs.forEach(doc => {
                 select.innerHTML += `<option value="${doc.id}">${doc.data().name}</option>`;
             });
+        }
+
+        async function renderPastResultsTab() {
+            const container = document.getElementById('tab-content-past-results');
+            if(!container) return;
+             container.innerHTML = `
+                <div class="flex flex-wrap gap-4 justify-between items-center mb-4">
+                  <h2 class="font-game text-xl text-cyan-400">Resultados de Períodos Anteriores</h2>
+                  <div class="flex gap-2">
+                    <button id="import-past-results-btn" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg"><i class="fas fa-upload mr-2"></i>Importar</button>
+                  </div>
+                </div>
+                <div id="past-results-list" class="glass-effect p-4 rounded-lg">Carregando...</div>`;
+
+            const listContainer = document.getElementById('past-results-list');
+
+            const studentsQuery = query(collection(db, "students"), where("teacherId", "==", currentTeacher.uid));
+            const pastResultsQuery = query(collection(db, "pastResults"), where("teacherId", "==", currentTeacher.uid));
+
+            const [studentsSnapshot, pastResultsSnapshot] = await Promise.all([getDocs(studentsQuery), getDocs(pastResultsQuery)]);
+
+            if (studentsSnapshot.empty) {
+                listContainer.innerHTML = '<p class="text-center text-gray-400">Nenhum Dev cadastrado para lançar resultados.</p>';
+                return;
+            }
+
+            const resultsByStudent = {};
+            pastResultsSnapshot.forEach(doc => {
+                const data = doc.data();
+                if (!resultsByStudent[data.studentId]) {
+                    resultsByStudent[data.studentId] = [];
+                }
+                resultsByStudent[data.studentId].push({ id: doc.id, ...data });
+            });
+            
+            const sortedStudents = studentsSnapshot.docs.sort((a, b) => a.data().name.localeCompare(b.data().name));
+
+            listContainer.innerHTML = sortedStudents.map(studentDoc => {
+                const student = { id: studentDoc.id, ...studentDoc.data() };
+                const results = resultsByStudent[student.id] || [];
+                const resultsHTML = results.map(res => `
+                    <div class="flex items-center justify-between bg-gray-900 p-2 rounded-md">
+                        <span>Período: <strong>${res.period}</strong> - Nota: <strong>${res.grade}</strong></span>
+                        <div class="space-x-2">
+                            <button data-id="${res.id}" class="edit-past-result-btn text-blue-400 hover:text-blue-300 text-xs"><i class="fas fa-pencil-alt"></i></button>
+                            <button data-id="${res.id}" class="delete-past-result-btn text-red-500 hover:text-red-400 text-xs"><i class="fas fa-trash"></i></button>
+                        </div>
+                    </div>
+                `).join('');
+
+                return `
+                    <div class="bg-gray-800 p-4 rounded-lg">
+                        <div class="flex justify-between items-center">
+                            <h3 class="font-bold text-lg">${student.name}</h3>
+                            <button data-student-id="${student.id}" class="add-past-result-btn bg-green-500 hover:bg-green-600 text-white font-bold text-sm py-1 px-3 rounded-lg"><i class="fas fa-plus mr-1"></i>Adicionar</button>
+                        </div>
+                        <div class="mt-3 space-y-2">
+                            ${resultsHTML || '<p class="text-sm text-gray-500">Nenhum resultado anterior lançado.</p>'}
+                        </div>
+                    </div>
+                `;
+            }).join('<div class="my-4 border-b border-gray-700"></div>');
         }
         
         async function renderStudentTimeline(studentId, studentTurma) {

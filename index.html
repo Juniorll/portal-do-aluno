@@ -1601,5 +1601,249 @@
                         <form id="import-grades-form" data-quest-id="${questId}" class="space-y-4">
                             <p class="text-gray-300">Selecione um arquivo CSV com as colunas: <code class="bg-gray-900 p-1 rounded">matricula,xp_ganho</code></p>
                             <a href="${encodedUri}" download="template_notas_${questId}.csv" class="text-cyan-400 hover:underline">Descarregar modelo com alunos da turma</a>
-                            <input type="file" id="csv-file-grades" accept=".csv" required class="w-full text-gray-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file
+                            <input type="file" id="csv-file-grades" accept=".csv" required class="w-full text-gray-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-500 file:text-white hover:file:bg-blue-600">
+                            <div class="flex justify-end space-x-4 mt-8">
+                                <button type="button" class="modal-close-btn bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-6 rounded-lg">Cancelar</button>
+                                <button type="submit" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-6 rounded-lg">Processar</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>`;
+            showModal(modalHTML);
+        }
+
+        async function handleEpicWorkModal(epicWorkId = null) {
+            let epicWork = { questId: '', workLink: '', studentIds: [] };
+            if (epicWorkId) {
+                const docSnap = await getDoc(doc(db, 'epicWorks', epicWorkId));
+                epicWork = docSnap.data();
+            }
+
+            const questsQuery = query(collection(db, "quests"), where("teacherId", "==", currentTeacher.uid));
+            const questsSnapshot = await getDocs(questsQuery);
+            const questsOptions = questsSnapshot.docs.map(doc => {
+                const quest = { id: doc.id, ...doc.data() };
+                const selected = quest.id === epicWork.questId ? 'selected' : '';
+                return `<option value="${quest.id}" data-turmas='${JSON.stringify(quest.turmas)}' ${selected}>${quest.title}</option>`;
+            }).join('');
+
+            const modalHTML = `
+                <div class="modal-backdrop">
+                    <div class="modal-content glass-effect p-8 rounded-2xl">
+                        <h3 class="font-game text-xl text-purple-400 mb-6">${epicWorkId ? 'Editar' : 'Registrar'} Trabalho Épico</h3>
+                        <form id="epic-work-form" data-id="${epicWorkId || ''}" class="space-y-4">
+                            <div>
+                                <label for="epic-quest-select" class="block mb-2 text-sm font-medium">Quest Associada</label>
+                                <select id="epic-quest-select" required class="w-full bg-gray-800 p-2 rounded-lg">
+                                    <option value="">-- Selecione uma Quest --</option>
+                                    ${questsOptions}
+                                </select>
+                            </div>
+                            <div>
+                                <label for="epic-work-link" class="block mb-2 text-sm font-medium">Link para o Trabalho</label>
+                                <input id="epic-work-link" type="url" placeholder="https://github.com/..." required class="w-full bg-gray-800 p-2 rounded-lg" value="${epicWork.workLink || ''}">
+                            </div>
+                            <div>
+                                <label class="block mb-2 text-sm font-medium">Alunos Envolvidos</label>
+                                <div id="epic-students-checkboxes" class="space-y-2 max-h-40 overflow-y-auto bg-gray-900 p-2 rounded-lg">
+                                    <p class="text-gray-500">Selecione uma quest para ver os alunos.</p>
+                                </div>
+                            </div>
+                             <div class="flex justify-end space-x-4 mt-8">
+                                <button type="button" class="modal-close-btn bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-6 rounded-lg">Cancelar</button>
+                                <button type="submit" class="bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-6 rounded-lg">Salvar</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>`;
+            showModal(modalHTML);
+
+            if (epicWorkId) {
+                await populateEpicStudentsSelect(epicWork.questId, epicWork.studentIds);
+            }
+        }
+
+        async function populateEpicStudentsSelect(questId, selectedStudentIds = []) {
+            const container = document.getElementById('epic-students-checkboxes');
+            if (!container) return;
+            
+            const questSelect = document.getElementById('epic-quest-select');
+            const selectedOption = questSelect.options[questSelect.selectedIndex];
+            if (!selectedOption || !selectedOption.dataset.turmas) {
+                container.innerHTML = '<p class="text-gray-500">Selecione uma quest válida.</p>';
+                return;
+            }
+            const turmas = JSON.parse(selectedOption.dataset.turmas);
+
+            if (turmas.length === 0) {
+                container.innerHTML = '<p class="text-gray-500">Esta quest não está associada a nenhuma turma.</p>';
+                return;
+            }
+
+            container.innerHTML = '<p class="text-gray-500">Carregando alunos...</p>';
+            const studentsQuery = query(collection(db, "students"), where("teacherId", "==", currentTeacher.uid), where("turma", "in", turmas));
+            const studentsSnapshot = await getDocs(studentsQuery);
+
+            if (studentsSnapshot.empty) {
+                container.innerHTML = '<p class="text-gray-500">Nenhum aluno encontrado para a(s) turma(s) desta quest.</p>';
+                return;
+            }
+
+            container.innerHTML = studentsSnapshot.docs.map(doc => {
+                const student = { id: doc.id, ...doc.data() };
+                const checked = selectedStudentIds.includes(student.id) ? 'checked' : '';
+                return `
+                    <label class="flex items-center space-x-3 p-2 hover:bg-gray-700 rounded-md">
+                        <input type="checkbox" name="epic-students" value="${student.id}" data-name="${student.name}" class="w-4 h-4 text-purple-600 bg-gray-700 border-gray-600 rounded" ${checked}>
+                        <span>${student.name}</span>
+                    </label>
+                `;
+            }).join('');
+        }
+
+        function getGradeFeedback(grade) {
+            if (grade >= 9.5) {
+                return {
+                    message: "Lendário! Você transcendeu os limites do código!",
+                    gif: "https://media.giphy.com/media/NEvPzZ8bd1V4Y/giphy.gif"
+                };
+            } else if (grade >= 8.5) {
+                return {
+                    message: "Excelente! Seu código é elegante e poderoso.",
+                    gif: "https://media.giphy.com/media/3o7abGQa0aRfpOzdXq/giphy.gif"
+                };
+            } else if (grade >= 7.0) {
+                return {
+                    message: "Muito bom! Você está no caminho certo para a maestria.",
+                    gif: "https://media.giphy.com/media/YTbZzCkRQCEJa/giphy.gif"
+                };
+            } else if (grade >= 6.0) {
+                return {
+                    message: "Na média! Passou, mas sei que você pode grindar mais XP da próxima vez!",
+                    gif: "https://media.giphy.com/media/11sBLVxNs7v6WA/giphy.gif" 
+                };
+            } else {
+                return {
+                    message: "Ops, game over desta vez. Mas todo dev tem seus bugs para corrigir. Vamos para a próxima fase!",
+                    gif: "https://media.giphy.com/media/3o7aDczpCChgB383te/giphy.gif"
+                };
+            }
+        }
+
+        async function handleStudentPastResultsModal(studentId) {
+            const q = query(collection(db, "pastResults"), where("studentId", "==", studentId));
+            const snapshot = await getDocs(q);
+            
+            let resultsHTML = '<p class="text-gray-400">Nenhum resultado de período anterior encontrado.</p>';
+            
+            if (!snapshot.empty) {
+                resultsHTML = snapshot.docs.map(doc => {
+                    const result = doc.data();
+                    const feedback = getGradeFeedback(result.grade);
+                    return `
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 items-center bg-gray-800 p-4 rounded-lg">
+                            <div>
+                                <h4 class="font-bold text-lg text-cyan-300">${result.period}</h4>
+                                <p class="font-game text-2xl text-lime-400 my-2">${result.grade.toFixed(1)}</p>
+                                <p class="text-sm italic text-gray-300">"${feedback.message}"</p>
+                            </div>
+                            <img src="${feedback.gif}" alt="${feedback.message}" class="rounded-lg w-full max-w-xs mx-auto">
+                        </div>
+                    `;
+                }).join('');
+            }
+            
+            const modalHTML = `
+                <div class="modal-backdrop">
+                    <div class="modal-content glass-effect p-8 rounded-2xl">
+                        <h3 class="font-game text-xl text-indigo-400 mb-6">Histórico de Batalhas (Resultados)</h3>
+                        <div class="space-y-4 max-h-[60vh] overflow-y-auto pr-4">
+                            ${resultsHTML}
+                        </div>
+                         <div class="flex justify-end mt-8">
+                            <button type="button" class="modal-close-btn bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-6 rounded-lg">Fechar</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            showModal(modalHTML);
+        }
+
+        async function handlePastResultModal(resultId = null, studentIdForNew = null) {
+            let result = { studentId: studentIdForNew || '', period: '', grade: ''};
+            
+            if (resultId) {
+                const docSnap = await getDoc(doc(db, 'pastResults', resultId));
+                if (docSnap.exists()) {
+                    result = { id: docSnap.id, ...docSnap.data() };
+                }
+            }
+
+            const studentsQuery = query(collection(db, "students"), where("teacherId", "==", currentTeacher.uid));
+            const studentsSnapshot = await getDocs(studentsQuery);
+            const sortedStudents = studentsSnapshot.docs.sort((a,b) => a.data().name.localeCompare(b.data().name));
+
+            const studentOptions = sortedStudents.map(doc => {
+                const student = { id: doc.id, ...doc.data() };
+                const selected = student.id === result.studentId ? 'selected' : '';
+                return `<option value="${student.id}" ${selected}>${student.name}</option>`;
+            }).join('');
+
+            const modalHTML = `
+                <div class="modal-backdrop">
+                    <div class="modal-content glass-effect p-8 rounded-2xl">
+                        <h3 class="font-game text-xl text-lime-400 mb-6">${resultId ? 'Editar' : 'Adicionar'} Resultado Anterior</h3>
+                        <form id="past-result-form" data-id="${resultId || ''}">
+                            <div class="space-y-4">
+                                <div>
+                                    <label for="past-result-student-select" class="block mb-2 text-sm">Aluno</label>
+                                    <select id="past-result-student-select" required class="w-full bg-gray-800 rounded-lg p-2">
+                                        <option value="">-- Selecione um Aluno --</option>
+                                        ${studentOptions}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="past-result-period" class="block mb-2 text-sm">Período (ex: 2024/1)</label>
+                                    <input type="text" id="past-result-period" placeholder="2024/1" required class="w-full bg-gray-800 rounded-lg p-2" value="${result.period}">
+                                </div>
+                                <div>
+                                    <label for="past-result-grade" class="block mb-2 text-sm">Nota Final (0.0 a 10.0)</label>
+                                    <input type="text" id="past-result-grade" placeholder="8.5" required class="w-full bg-gray-800 rounded-lg p-2" value="${result.grade}">
+                                </div>
+                            </div>
+                            <div class="flex justify-end space-x-4 mt-8">
+                                <button type="button" class="modal-close-btn bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-6 rounded-lg">Cancelar</button>
+                                <button type="submit" class="bg-lime-500 hover:bg-lime-600 text-gray-900 font-bold py-2 px-6 rounded-lg">Salvar</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>`;
+            showModal(modalHTML);
+        }
+
+        function handleImportPastResultsModal() {
+            const modalHTML = `
+                <div class="modal-backdrop">
+                    <div class="modal-content glass-effect p-8 rounded-2xl">
+                        <h3 class="font-game text-xl text-blue-400 mb-6">Importar Resultados Anteriores</h3>
+                        <form id="import-past-results-form" class="space-y-4">
+                            <p class="text-gray-300">Selecione um arquivo CSV com as colunas: <code class="bg-gray-900 p-1 rounded">matricula,periodo,nota_final</code></p>
+                            <a href="data:text/csv;charset=utf-8,matricula,periodo,nota_final%0A12345,2024/1,8.5%0A67890,2024/1,9.0" download="template_resultados.csv" class="text-cyan-400 hover:underline">Descarregar modelo</a>
+                            <input type="file" id="csv-file-past-results" accept=".csv" required class="w-full text-gray-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-500 file:text-white hover:file:bg-blue-600">
+                             <div class="flex justify-end space-x-4 mt-8">
+                                <button type="button" class="modal-close-btn bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-6 rounded-lg">Cancelar</button>
+                                <button type="submit" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-6 rounded-lg">Processar</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>`;
+            showModal(modalHTML);
+        }
+
+        // --- Initial Load ---
+        renderLoginView();
+
+    </script>
+</body>
+</html>
 

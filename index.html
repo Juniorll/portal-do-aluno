@@ -62,7 +62,6 @@
             border: 2px solid #a855f7; /* purple-500 */
             box-shadow: 0 0 15px rgba(168, 85, 247, 0.5);
         }
-        .badge-locked { filter: grayscale(1); opacity: 0.5; }
     </style>
 </head>
 <body class="min-h-screen p-4 flex items-center justify-center">
@@ -86,7 +85,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, setDoc, addDoc, collection, getDocs, query, where, updateDoc, onSnapshot, deleteDoc, writeBatch, serverTimestamp, orderBy, increment, Timestamp, arrayUnion } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, setDoc, addDoc, collection, getDocs, query, where, updateDoc, onSnapshot, deleteDoc, writeBatch, serverTimestamp, orderBy, increment, Timestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- IMPORTANT: PASTE YOUR FIREBASE CONFIGURATION HERE ---
         const firebaseConfig = {
@@ -210,7 +209,6 @@
                 'import-past-results-btn': handleImportPastResultsModal,
                 'edit-past-result-btn': () => handlePastResultModal(target.dataset.id),
                 'delete-past-result-btn': () => handleDeletePastResult(target.dataset.id),
-                'show-achievements-btn': () => handleAchievementsModal(target.dataset.studentId),
             };
 
             const actionKey = Object.keys(actionMap).find(key => target.id === key || target.classList.contains(key));
@@ -457,10 +455,6 @@
                 await batch.commit();
                 showAlert('Notas e feedbacks salvos com sucesso!');
                 hideModal();
-                // Check for new badges for each updated student
-                for (const studentId of updatedStudentIds) {
-                    await checkAndAwardBadges(studentId);
-                }
             } catch(error) { showAlert(`Erro ao salvar: ${error.message}`, 'error'); }
         }
 
@@ -600,12 +594,6 @@
                     showAlert('Trabalho Épico registrado com sucesso!');
                 }
                 hideModal();
-
-                // Award badge for epic work
-                for(const studentId of studentIds) {
-                    await checkAndAwardBadges(studentId, { isEpic: true });
-                }
-
             } catch (error) {
                 showAlert(`Erro ao salvar Trabalho Épico: ${error.message}`, 'error');
             }
@@ -644,7 +632,6 @@
 
                     const batch = writeBatch(db);
                     let processedCount = 0;
-                    const updatedStudentIds = [];
 
                     const allStudentsQuery = query(collection(db, "students"), where("teacherId", "==", currentTeacher.uid));
                     const studentsSnapshot = await getDocs(allStudentsQuery);
@@ -682,20 +669,12 @@
                                 if (xpDifference !== 0) {
                                     batch.update(studentRef, { totalXP: increment(xpDifference) });
                                 }
-                                if (!updatedStudentIds.includes(studentId)) {
-                                    updatedStudentIds.push(studentId);
-                                }
                                 processedCount++;
                             }
                         }
                     }
 
                     await batch.commit();
-                    
-                    for (const studentId of updatedStudentIds) {
-                       await checkAndAwardBadges(studentId);
-                    }
-
                     loadingSpinner.style.display = 'none';
                     showAlert(`${processedCount} notas importadas com sucesso!`);
                     hideModal();
@@ -707,7 +686,7 @@
             };
             reader.readAsText(file);
         }
-
+        
         async function handlePastResultFormSubmit(form) {
             const id = form.dataset.id;
             const studentId = form.querySelector('#past-result-student-select').value;

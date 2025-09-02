@@ -345,8 +345,7 @@
                 name: form.querySelector('#student-name').value,
                 matricula: form.querySelector('#student-matricula').value,
                 turma: form.querySelector('#student-turma').value.trim(),
-                teacherId: currentTeacher.uid,
-                unlockedBadges: [] // Initialize badges
+                teacherId: currentTeacher.uid
             };
             if(!studentData.name || !studentData.matricula || !studentData.turma) return showAlert('Preencha todos os campos.', 'error');
 
@@ -417,12 +416,10 @@
             const inputs = form.querySelectorAll('.grade-input');
             const batch = writeBatch(db);
             let changesCount = 0;
-            const updatedStudentIds = [];
 
             for (const input of inputs) {
                 const studentId = input.dataset.studentId;
                 const newScore = parseInt(input.value, 10);
-                const feedback = form.querySelector(`#feedback-${studentId}`).value.trim();
 
                 if (!isNaN(newScore)) {
                     const submissionId = `${studentId}_${questId}`;
@@ -432,30 +429,25 @@
                     const submissionDoc = await getDoc(submissionRef);
                     const originalScore = submissionDoc.exists() ? submissionDoc.data().score : 0;
                     
-                    if(newScore !== originalScore || feedback) {
+                    if(newScore !== originalScore) {
                         changesCount++;
                         batch.set(submissionRef, {
-                            studentId, questId, score: newScore, status: 'completed', teacherId: currentTeacher.uid, feedback: feedback || ""
+                            studentId, questId, score: newScore, status: 'completed', teacherId: currentTeacher.uid
                         }, { merge: true });
 
                         const xpDifference = newScore - originalScore;
-                        if (xpDifference !== 0) {
-                            batch.update(studentRef, { totalXP: increment(xpDifference) });
-                        }
-                        if (!updatedStudentIds.includes(studentId)) {
-                            updatedStudentIds.push(studentId);
-                        }
+                        batch.update(studentRef, { totalXP: increment(xpDifference) });
                     }
                 }
             }
 
-            if (changesCount === 0) return showAlert('Nenhuma nota ou feedback foi alterado.');
+            if (changesCount === 0) return showAlert('Nenhuma nota foi alterada.');
 
             try {
                 await batch.commit();
-                showAlert('Notas e feedbacks salvos com sucesso!');
+                showAlert('Notas salvas com sucesso!');
                 hideModal();
-            } catch(error) { showAlert(`Erro ao salvar: ${error.message}`, 'error'); }
+            } catch(error) { showAlert(`Erro ao salvar as notas: ${error.message}`, 'error'); }
         }
 
         async function handleMessageFormSubmit(form) {
@@ -508,8 +500,7 @@
                         turma: values[2],
                         teacherId: currentTeacher.uid,
                         totalXP: 0,
-                        lastSeenXP: 0,
-                        unlockedBadges: []
+                        lastSeenXP: 0
                     };
                     const newStudentRef = doc(collection(db, "students"));
                     batch.set(newStudentRef, studentData);
@@ -663,7 +654,7 @@
                                 const xpDifference = newScore - originalScore;
 
                                 batch.set(submissionRef, {
-                                    studentId, questId, score: newScore, status: 'completed', teacherId: currentTeacher.uid, feedback: ""
+                                    studentId, questId, score: newScore, status: 'completed', teacherId: currentTeacher.uid
                                 }, { merge: true });
                                 
                                 if (xpDifference !== 0) {
@@ -1061,7 +1052,6 @@
                         <p id="student-level" class="text-lg text-lime-400 ${levelUpClass}"><i class="fas fa-star mr-2"></i>XP Total: ${studentData.totalXP || 0}</p>
                     </div>
                     <div class="flex items-center gap-4 mt-4 sm:mt-0">
-                        <button id="show-achievements-btn" data-student-id="${studentId}" class="bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-2 px-4 rounded-lg"><i class="fas fa-trophy mr-2"></i>Conquistas</button>
                         <button id="show-past-results-btn" data-student-id="${studentId}" class="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg"><i class="fas fa-history mr-2"></i>Períodos Anteriores</button>
                         <button id="student-logout-btn" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg"><i class="fas fa-sign-out-alt mr-2"></i>Sair da Jornada</button>
                     </div>

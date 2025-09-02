@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Level Up! - Sua Jornada de Dev</title>
+    <title>Level Up! - Sua Jornada de Aluno</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -317,7 +317,7 @@
         async function handleTeacherApproval(teacherId, approve) {
             const status = approve ? 'approved' : 'rejected';
             await updateDoc(doc(db, "users", teacherId), { status });
-            showAlert(`Mestre ${approve ? 'aprovado' : 'rejeitado'}!`);
+            showAlert(`Professor ${approve ? 'aprovado' : 'rejeitado'}!`);
         }
 
         function handleTabSwitch(tabElement) {
@@ -351,17 +351,17 @@
             try {
                 if (id) {
                     await updateDoc(doc(db, "students", id), studentData);
-                    showAlert('Dev atualizado com sucesso!');
+                    showAlert('Aluno / Dev atualizado com sucesso!');
                 } else {
                     await addDoc(collection(db, "students"), { ...studentData, totalXP: 0, lastSeenXP: 0 });
-                    showAlert('Novo Dev adicionado!');
+                    showAlert('Novo Aluno / Dev adicionado!');
                 }
                 hideModal();
             } catch (error) { showAlert(`Erro ao salvar: ${error.message}`, 'error'); }
         }
         
         async function handleDeleteStudent(studentId) {
-            if (!window.confirm('Tem certeza que deseja remover este Dev? Todas as suas notas e resultados serão perdidos.')) return;
+            if (!window.confirm('Tem certeza que deseja remover este Aluno / Dev? Todas as suas notas e resultados serão perdidos.')) return;
             try {
                 const q = query(collection(db, "pastResults"), where("studentId", "==", studentId));
                 const snapshot = await getDocs(q);
@@ -370,7 +370,7 @@
                 await batch.commit();
 
                 await deleteDoc(doc(db, "students", studentId));
-                showAlert('Dev removido com sucesso.');
+                showAlert('Aluno / Dev removido com sucesso.');
             } catch (error) { showAlert(`Erro ao remover: ${error.message}`, 'error'); }
         }
 
@@ -775,12 +775,12 @@
                 <div id="login-view">
                     <header class="text-center mb-8">
                         <h1 class="font-game text-4xl md:text-6xl text-cyan-400 drop-shadow-[0_4px_4px_rgba(0,255,255,0.25)]">Level Up!</h1>
-                        <p class="text-gray-300 mt-4 text-lg">Sua Jornada para se tornar um Dev Lendário começa aqui.</p>
+                        <p class="text-gray-300 mt-4 text-lg">Sua Jornada de Aprendizagem Começa Aqui.</p>
                     </header>
                     
                     <div id="top-5-podium-container" class="mb-12">
-                        <h2 class="font-game text-3xl text-center text-yellow-400 mb-8">Top 5 Devs</h2>
-                        <div id="top-5-podium" class="flex justify-center items-end gap-4 flex-wrap">
+                        <h2 class="font-game text-3xl text-center text-yellow-400 mb-8">Top 5 Alunos / Devs</h2>
+                        <div id="top-5-podium" class="flex justify-center items-end gap-2 sm:gap-4 flex-wrap">
                             <p class="text-gray-400">Carregando o pódio...</p>
                         </div>
                     </div>
@@ -789,7 +789,7 @@
 
                     <div class="grid md:grid-cols-2 gap-8">
                         <div class="glass-effect p-8 rounded-2xl">
-                            <h2 class="font-game text-2xl text-lime-400 mb-4">Área do Dev</h2>
+                            <h2 class="font-game text-2xl text-lime-400 mb-4">Área do Aluno / Dev</h2>
                             <p class="text-gray-400 mb-6">Insira sua matrícula para carregar seu progresso ou encontre-a pelo seu nome.</p>
                             <div class="space-y-4">
                                 <input type="text" id="student-id-input" placeholder="Digite sua Matrícula" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-cyan-500">
@@ -803,8 +803,8 @@
                             </div>
                         </div>
                         <div class="glass-effect p-8 rounded-2xl">
-                            <h2 class="font-game text-2xl text-yellow-400 mb-4">Área do Mestre</h2>
-                            <p class="text-gray-400 mb-6">Login para Mestres da Guilda e Administradores.</p>
+                            <h2 class="font-game text-2xl text-yellow-400 mb-4">Área do Professor</h2>
+                            <p class="text-gray-400 mb-6">Login para Professores e Administradores.</p>
                             <form id="teacher-login-form" class="space-y-4">
                                 <input type="email" id="teacher-email" placeholder="Email" required class="w-full bg-gray-800 border border-gray-600 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-yellow-500">
                                 <input type="password" id="teacher-password" placeholder="Senha" required class="w-full bg-gray-800 border border-gray-600 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-yellow-500">
@@ -853,7 +853,7 @@
                 const rankedStudents = await getRankingData();
                 
                 if (rankedStudents.length === 0) {
-                    podiumContainer.innerHTML = '<p class="text-gray-400">Ainda não há devs no ranking para o pódio.</p>';
+                    podiumContainer.innerHTML = '<p class="text-gray-400">Ainda não há Alunos / Devs no ranking para o pódio.</p>';
                     return;
                 }
 
@@ -865,26 +865,26 @@
                     if (top5[index]) {
                         const student = top5[index];
                         const rank = index + 1;
-                        let heightClass = 'h-32';
+                        let heightClass = 'h-36'; // Increased height to accommodate wrapped names
                         let rankColor = 'bg-gray-600 text-white';
                         let podiumClass = 'podium-other';
                         let icon = `<i class="fas fa-star text-yellow-300"></i>`;
 
                         if (rank === 1) { heightClass = 'h-48'; podiumClass = 'podium-1'; rankColor = 'bg-yellow-400 text-black'; icon = `<i class="fas fa-crown text-yellow-400"></i>`; } 
                         else if (rank === 2) { heightClass = 'h-40'; podiumClass = 'podium-2'; rankColor = 'bg-gray-300 text-black'; icon = `<i class="fas fa-medal text-gray-300"></i>`; } 
-                        else if (rank === 3) { heightClass = 'h-32'; podiumClass = 'podium-3'; rankColor = 'bg-yellow-600 text-white'; icon = `<i class="fas fa-award text-yellow-600"></i>`; }
+                        else if (rank === 3) { heightClass = 'h-36'; podiumClass = 'podium-3'; rankColor = 'bg-yellow-600 text-white'; icon = `<i class="fas fa-award text-yellow-600"></i>`; }
                         
                         podiumHTML += `
-                            <div class="relative podium-item glass-effect rounded-t-lg border-b-4 ${podiumClass} w-48 ${heightClass} flex flex-col items-center justify-center p-4 text-center">
+                            <div class="relative podium-item glass-effect rounded-t-lg border-b-4 ${podiumClass} w-36 sm:w-48 ${heightClass} flex flex-col items-center justify-center p-4 text-center">
                                 <div class="podium-rank ${rankColor}">${rank}</div>
                                 <div class="text-2xl mb-2">${icon}</div>
-                                <h3 class="font-bold text-lg truncate w-full">${student.name}</h3>
-                                <p class="font-game text-lime-400 text-xl">${student.aproveitamento.toFixed(1)}%</p>
+                                <h3 class="font-bold text-sm sm:text-base w-full break-words min-h-[40px] flex items-center justify-center">${student.name}</h3>
+                                <p class="font-game text-lime-400 text-lg sm:text-xl">${student.aproveitamento.toFixed(1)}%</p>
                                 <p class="text-xs text-gray-400">${student.totalXP || 0} / ${student.totalTurmaXP || 0} XP</p>
                             </div>`;
                     }
                 }
-                podiumContainer.innerHTML = podiumHTML || '<p class="text-gray-400">Ainda não há devs no ranking para o pódio.</p>';
+                podiumContainer.innerHTML = podiumHTML || '<p class="text-gray-400">Ainda não há Alunos / Devs no ranking para o pódio.</p>';
 
             } catch (error) {
                 console.error("Error rendering podium:", error);
@@ -942,7 +942,7 @@
             const html = `
                 <div id="register-view" class="max-w-md mx-auto">
                      <div class="glass-effect p-8 rounded-2xl">
-                        <h2 class="font-game text-2xl text-yellow-400 mb-6 text-center">Cadastro de Mestre</h2>
+                        <h2 class="font-game text-2xl text-yellow-400 mb-6 text-center">Cadastro de Professor</h2>
                         <form id="teacher-register-form" class="space-y-4">
                             <input type="text" id="register-name" placeholder="Nome Completo" required class="w-full bg-gray-800 border border-gray-600 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-yellow-500">
                             <input type="email" id="register-email" placeholder="Email" required class="w-full bg-gray-800 border border-gray-600 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-yellow-500">
@@ -962,7 +962,7 @@
                     <button class="logout-btn bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg"><i class="fas fa-sign-out-alt mr-2"></i>Sair</button>
                 </header>
                 <div class="glass-effect p-6 rounded-2xl">
-                    <h2 class="font-game text-xl text-yellow-400 mb-4">Aprovação de Mestres</h2>
+                    <h2 class="font-game text-xl text-yellow-400 mb-4">Aprovação de Professores</h2>
                     <div id="admin-teacher-approval-list" class="space-y-4"></div>
                 </div>`;
             showView(html);
@@ -971,7 +971,7 @@
             const q = query(collection(db, "users"), where("role", "==", "teacher"), where("status", "==", "pending"));
             const unsub = onSnapshot(q, (snapshot) => {
                 if (snapshot.empty) {
-                    listContainer.innerHTML = '<p class="text-gray-400">Nenhum Mestre aguardando aprovação.</p>';
+                    listContainer.innerHTML = '<p class="text-gray-400">Nenhum Professor aguardando aprovação.</p>';
                     return;
                 }
                 listContainer.innerHTML = '';
@@ -1006,7 +1006,7 @@
                 contentHTML = `
                     <div class="mb-6 border-b border-gray-600">
                         <nav class="-mb-px flex space-x-6 overflow-x-auto" aria-label="Tabs">
-                            <a href="#" data-tab="students" class="teacher-tab active whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">Gerenciar Devs</a>
+                            <a href="#" data-tab="students" class="teacher-tab active whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">Gerenciar Alunos / Devs</a>
                             <a href="#" data-tab="quests" class="teacher-tab whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">Gerenciar Quests</a>
                             <a href="#" data-tab="epic-works" class="teacher-tab whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">Trabalhos Épicos</a>
                             <a href="#" data-tab="past-results" class="teacher-tab whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">Resultados Anteriores</a>
@@ -1022,7 +1022,7 @@
 
             const viewHTML = `
                 <header class="flex flex-wrap justify-between items-center mb-8">
-                    <h1 class="font-game text-2xl md:text-3xl text-yellow-400">Painel do Mestre ${name}</h1>
+                    <h1 class="font-game text-2xl md:text-3xl text-yellow-400">Painel do Professor ${name}</h1>
                     <button class="logout-btn bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg"><i class="fas fa-sign-out-alt mr-2"></i>Sair</button>
                 </header>
                 ${contentHTML}`;
@@ -1037,7 +1037,103 @@
                 await updateDoc(doc(db, "students", studentId), { lastSeenXP: studentData.totalXP });
             }
 
-            const motivationalPhrases = ["Bugs são features inesperadas.", "Compilou? Shippa!", "Keep calm and code on."];
+            const motivationalPhrases = [
+                "Acredite em você mesmo e em tudo que você é. Saiba que há algo dentro de você que é maior que qualquer obstáculo.",
+                "O sucesso é a soma de pequenos esforços repetidos dia após dia.",
+                "Não tenha medo de desistir do bom para perseguir o ótimo.",
+                "A única maneira de fazer um ótimo trabalho é amar o que você faz.",
+                "Oportunidades não surgem. Você as cria.",
+                "O segredo para ir em frente é começar.",
+                "A persistência realiza o impossível.",
+                "O futuro pertence àqueles que acreditam na beleza de seus sonhos.",
+                "Nossa maior fraqueza está em desistir. O caminho mais certo de vencer é tentar mais uma vez.",
+                "A vida é 10% o que acontece comigo e 90% de como eu reajo a isso.",
+                "Para ter sucesso, o seu desejo de sucesso deve ser maior do que o seu medo do fracasso.",
+                "Um objetivo sem um plano é apenas um desejo.",
+                "A jornada de mil milhas começa com um único passo.",
+                "Faça o seu melhor. O que você planta agora, colherá mais tarde.",
+                "A disciplina é a ponte entre metas e realizações.",
+                "Seja a mudança que você quer ver no mundo.",
+                "A coragem não é a ausência do medo, mas a decisão de que algo é mais importante que o medo.",
+                "Nunca é tarde demais para ser o que você poderia ter sido.",
+                "Você erra 100% dos chutes que não dá.",
+                "Acreditar é a força que nos permite subir os maiores degraus na escada da vida.",
+                "Sonhe. Acredite. Conquiste.",
+                "Cair sete vezes, levantar-se oito.",
+                "Tudo o que um sonho precisa para ser realizado é alguém que acredite que ele possa ser realizado.",
+                "Comece onde você está. Use o que você tem. Faça o que você pode.",
+                "A inspiração existe, mas ela precisa te encontrar trabalhando.",
+                "Não espere por uma crise para descobrir o que é importante em sua vida.",
+                "O único lugar onde o sucesso vem antes do trabalho é no dicionário.",
+                "Grandes coisas nunca vêm de zonas de conforto.",
+                "A dificuldade de hoje é a força de amanhã.",
+                "Se a mente de um homem pode concebê-lo e acreditar, ele pode alcançá-lo.",
+                "O otimismo é a fé em ação. Nada se pode levar a efeito sem otimismo.",
+                "A felicidade não é algo pronto. Ela vem de suas próprias ações.",
+                "Quanto mais eu trabalho, mais sorte eu pareço ter.",
+                "A melhor vingança é um sucesso estrondoso.",
+                "A vida encolhe ou se expande na proporção da sua coragem.",
+                "Não é o que você olha que importa, é o que você vê.",
+                "Um homem criativo é motivado pelo desejo de alcançar, não pelo desejo de vencer os outros.",
+                "O conhecimento é poder.",
+                "A melhor maneira de prever o futuro é criá-lo.",
+                "Acredite que você pode, assim você já está no meio do caminho.",
+                "Seus limites são apenas aqueles que você impõe a si mesmo.",
+                "O fracasso é o tempero que dá sabor ao sucesso.",
+                "A única coisa que fica entre você e seu sonho é a vontade de tentar e a crença de que é realmente possível.",
+                "O que não te desafia, não te transforma.",
+                "A excelência não é um ato, mas um hábito.",
+                "A paciência é um elemento fundamental do sucesso.",
+                "Aja como se o que você faz, fizesse a diferença. Porque faz.",
+                "A força não vem da capacidade física, e sim de uma vontade indomável.",
+                "Não conte os dias, faça os dias contarem.",
+                "Pequenas oportunidades são muitas vezes o começo de grandes empreendimentos.",
+                "“Com grandes poderes, vêm grandes responsabilidades.” - Homem-Aranha",
+                "“Que a Força esteja com você.” - Star Wars",
+                "“Eu sou o Homem de Ferro.” - Homem de Ferro",
+                "“Por que caímos? Para que possamos aprender a nos levantar.” - Batman Begins",
+                "“Até a noite mais escura terminará e o sol nascerá.” - Os Miseráveis",
+                "“A vida se move muito rápido. Se você não parar e olhar ao redor de vez em quando, pode perdê-la.” - Curtindo a Vida Adoidado",
+                "“Nossos destinos vivem dentro de nós. Você só precisa ser corajoso o suficiente para vê-los.” - Valente",
+                "“Faça ou não faça. Tentativa não há.” - Mestre Yoda, Star Wars",
+                "“Eu sou inevitável.” - Thanos",
+                "“A flor que desabrocha na adversidade é a mais rara e bonita de todas.” - Mulan",
+                "“Hoje é o primeiro dia do resto da sua vida.”",
+                "“A persistência é o caminho do êxito.” - Charles Chaplin",
+                "“O que sabemos é uma gota; o que ignoramos é um oceano.” - Isaac Newton",
+                "“A imaginação é mais importante que o conhecimento.” - Albert Einstein",
+                "“A vida é como andar de bicicleta. Para manter o equilíbrio, você deve continuar se movendo.” - Albert Einstein",
+                "“Seja você mesmo; todos os outros já existem.” - Oscar Wilde",
+                "“Transforme suas feridas em sabedoria.” - Oprah Winfrey",
+                "“Não julgue cada dia pela colheita que você obtém, mas pelas sementes que você planta.”",
+                "“A única coisa que temos a temer é o próprio medo.” - Franklin D. Roosevelt",
+                "“A questão não é quem vai me deixar; é quem vai me impedir.” - Ayn Rand",
+                "“O sucesso não é definitivo, o fracasso não é fatal: é a coragem de continuar que conta.” - Winston Churchill",
+                "“Tudo o que você pode imaginar é real.” - Pablo Picasso",
+                "“A simplicidade é o último grau de sofisticação.” - Leonardo da Vinci",
+                "“Não são os nossos dons que mostram quem realmente somos. São as nossas escolhas.” - Dumbledore, Harry Potter",
+                "“Um dia de cada vez, que é pra não perder as boas surpresas da vida.” - Clarice Lispector",
+                "“O tempo não para.” - Cazuza",
+                "“A vida é curta, a arte é longa.” - Hipócrates",
+                "“Tenho em mim todos os sonhos do mundo.” - Fernando Pessoa",
+                "“A arte de ser sábio é a arte de saber o que ignorar.” - William James",
+                "“Seja a energia que você quer atrair.”",
+                "“Você não pode voltar atrás e mudar o começo, mas pode começar onde está e mudar o final.” - C.S. Lewis",
+                "“Continue nadando.” - Procurando Nemo",
+                "“As coisas boas vêm para aqueles que esperam.”",
+                "“O conhecimento fala, mas a sabedoria escuta.” - Jimi Hendrix",
+                "“A mente que se abre a uma nova ideia jamais voltará ao seu tamanho original.” - Albert Einstein",
+                "“Somos o que repetidamente fazemos. A excelência, portanto, não é um feito, mas um hábito.” - Aristóteles",
+                "“O importante é não parar de questionar.” - Albert Einstein",
+                "“A vida é o que acontece enquanto você está ocupado fazendo outros planos.” - John Lennon",
+                "“Tudo o que você precisa é amor.” - The Beatles",
+                "“E, no final, o amor que você recebe é igual ao amor que você faz.” - The Beatles",
+                "“Você pode dizer que eu sou um sonhador, mas eu não sou o único.” - John Lennon",
+                "“Quem olha para fora, sonha; quem olha para dentro, desperta.” - Carl Jung",
+                "“O que quer que você seja, seja um bom.” - Abraham Lincoln",
+                "“O impossível é o fantasma dos tímidos e o refúgio dos covardes.” - Napoleão Bonaparte",
+                "“A dúvida é o princípio da sabedoria.” - Aristóteles",
+            ];
             const phrase = motivationalPhrases[Math.floor(Math.random() * motivationalPhrases.length)];
 
             const html = `
@@ -1086,7 +1182,7 @@
             if(!container) return;
             container.innerHTML = `
                 <div class="flex flex-wrap gap-4 justify-between items-center mb-4">
-                  <h2 class="font-game text-xl text-cyan-400">Devs (Alunos)</h2>
+                  <h2 class="font-game text-xl text-cyan-400">Alunos / Devs</h2>
                   <div class="flex gap-2">
                     <button id="import-students-btn" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg"><i class="fas fa-upload mr-2"></i>Importar</button>
                     <button class="add-student-btn bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg"><i class="fas fa-plus mr-2"></i>Adicionar</button>
@@ -1100,7 +1196,7 @@
                 if(!listContainer) return;
 
                 if(snapshot.empty){
-                    listContainer.innerHTML = '<p class="text-center text-gray-400">Nenhum Dev cadastrado ainda.</p>';
+                    listContainer.innerHTML = '<p class="text-center text-gray-400">Nenhum Aluno / Dev cadastrado ainda.</p>';
                     return;
                 }
                 
@@ -1239,11 +1335,11 @@
                         <label class="block mb-2 text-sm font-medium">Tipo de Mensagem</label>
                         <div class="flex items-center space-x-4">
                             <label><input type="radio" name="message-type" value="general" checked class="mr-2">Geral (para todos)</label>
-                            <label><input type="radio" name="message-type" value="personal" class="mr-2">Pessoal (para um Dev)</label>
+                            <label><input type="radio" name="message-type" value="personal" class="mr-2">Pessoal (para um Aluno / Dev)</label>
                         </div>
                     </div>
                     <div id="student-select-container" style="display:none;">
-                        <label for="message-student-select" class="block mb-2 text-sm font-medium">Selecione o Dev</label>
+                        <label for="message-student-select" class="block mb-2 text-sm font-medium">Selecione o Aluno / Dev</label>
                         <select id="message-student-select" class="w-full bg-gray-800 border border-gray-600 rounded-lg p-2"></select>
                     </div>
                     <div>
@@ -1287,7 +1383,7 @@
             const [studentsSnapshot, pastResultsSnapshot] = await Promise.all([getDocs(studentsQuery), getDocs(pastResultsQuery)]);
 
             if (studentsSnapshot.empty) {
-                listContainer.innerHTML = '<p class="text-center text-gray-400">Nenhum Dev cadastrado para lançar resultados.</p>';
+                listContainer.innerHTML = '<p class="text-center text-gray-400">Nenhum Aluno / Dev cadastrado para lançar resultados.</p>';
                 return;
             }
 
@@ -1413,7 +1509,7 @@
                     });
                     const message = sortedMessages[0].data(); // Show the latest
                     box.innerHTML = `
-                        <h3 class="font-bold text-purple-300"><i class="fas fa-envelope mr-2"></i> Mensagem do seu Mestre:</h3>
+                        <h3 class="font-bold text-purple-300"><i class="fas fa-envelope mr-2"></i> Mensagem do seu Professor:</h3>
                         <p class="italic">"${message.content}"</p>`;
                     box.classList.remove('hidden');
                 } else {
@@ -1435,7 +1531,7 @@
                     : rankedStudents.filter(s => s.turma === filter);
 
                 if(studentsToDisplay.length === 0) {
-                    list.innerHTML = '<li>Nenhum dev no ranking ainda.</li>';
+                    list.innerHTML = '<li>Nenhum Aluno / Dev no ranking ainda.</li>';
                     return;
                 }
 
@@ -1469,7 +1565,7 @@
             const modalHTML = `
                 <div class="modal-backdrop">
                     <div class="modal-content glass-effect p-8 rounded-2xl">
-                        <h3 class="font-game text-xl text-lime-400 mb-6">${studentId ? 'Editar' : 'Adicionar'} Dev</h3>
+                        <h3 class="font-game text-xl text-lime-400 mb-6">${studentId ? 'Editar' : 'Adicionar'} Aluno / Dev</h3>
                         <form id="student-form" data-id="${studentId || ''}">
                             <div class="space-y-4">
                                 <input type="text" id="student-name" placeholder="Nome Completo" required class="w-full bg-gray-800 rounded-lg p-2" value="${student.name}">
@@ -1573,7 +1669,7 @@
             const modalHTML = `
                 <div class="modal-backdrop">
                     <div class="modal-content glass-effect p-8 rounded-2xl">
-                        <h3 class="font-game text-xl text-lime-400 mb-6">Importar Devs (Alunos)</h3>
+                        <h3 class="font-game text-xl text-lime-400 mb-6">Importar Alunos / Devs</h3>
                         <form id="import-student-form" class="space-y-4">
                             <p class="text-gray-300">Selecione um arquivo CSV com as colunas: <code class="bg-gray-900 p-1 rounded">nome,matricula,turma</code></p>
                             <a href="data:text/csv;charset=utf-8,nome,matricula,turma%0AJoao%20Silva,12345,2024A%0AMaria%20Souza,67890,2024B" download="template_alunos.csv" class="text-cyan-400 hover:underline">Descarregar modelo</a>
@@ -1731,37 +1827,37 @@
             if (grade >= 9.1) {
                 return {
                     message: "Incrível! Um desempenho espetacular que inspira a todos. Parabéns!",
-                    img: "https://i.imgur.com/8IIA826.png" // Success Kid
+                    img: "https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExcWkwdWtuNDh1b3Vvc2t4OHlydzE4dGo3ZW0xOHEzaGZ2cWpqbnZjNyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/l0NwHXQy3kUSfFF60/giphy.gif"
                 };
             } else if (grade >= 8.1) {
                 return {
                     message: "Excelente trabalho! Você demonstrou um grande domínio e dedicação.",
-                    img: "https://i.imgur.com/vBq47yS.jpeg" // Drake approving
+                    img: "https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExbnFhdmh2aGZrY3dteG9sc2czYmo5c3FiOXBtNjllMnFtYWc2d3gzYyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/fDbzXb6Cv5L56/giphy.gif"
                 };
             } else if (grade >= 7.1) {
                 return {
                     message: "Muito bem! Um ótimo resultado, fruto do seu esforço e empenho.",
-                    img: "https://i.imgur.com/Jz2cT1I.jpeg" // Thumbs up kid
+                    img: "https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExdDAyaG84d3Z6MjBxbTQzcXpkN2lrdTc3YmFvY3Yzd29jamU3a2NobCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/RXnGNWQaKazwicF3wB/giphy.gif"
                 };
             } else if (grade >= 6) {
                 return {
                     message: "Na média! Você atingiu o objetivo. Continue assim para ir ainda mais longe!",
-                    img: "https://i.imgur.com/I0N4U3N.jpeg" // The Rock driving
+                    img: "https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExN3Z3YWhxMzhhbTNuaDlyemRyNXU5ZTZ0MWdoZjYxc3c5eGxvd3NudSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/WU6ZJ9oMBOSN7KXMZn/giphy.gif"
                 };
             } else if (grade >= 4.1) {
                 return {
                     message: "Alerta! Este resultado está abaixo do esperado e a responsabilidade é sua. É preciso mais dedicação para reverter a situação.",
-                    img: "https://i.imgur.com/z4z4p1E.jpeg" // Disappointed Cricket Fan
+                    img: "https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExamZra3ZnYWV1czdnc2xpdmxkb29ycWZzd2g2a3FlOXJjNXFtc2VnYSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/YTJXDIivNMPuNSMgc0/giphy.gif"
                 };
             } else if (grade >= 2.1) {
                 return {
                     message: "Cuidado! Seu desempenho foi muito baixo. Reavalie seus métodos de estudo e assuma a responsabilidade pelo seu aprendizado.",
-                    img: "https://i.imgur.com/EVtT3bE.png" // Panik
+                    img: "https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExbGV2azc3ZGlpbHFieW8yODEwNTVhaXR1YmgwNTE2NDBzcnN4c2E5cSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/jsIa0hyKnzhQRDYObr/giphy.gif"
                 };
             } else { // 0 to 2
                 return {
                     message: "Resultado crítico. A responsabilidade é sua. É urgente uma mudança drástica de postura nos estudos para não ser reprovado.",
-                    img: "https://i.imgur.com/c4jt321.png" // This is Fine
+                    img: "https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExbWwwYzNnZjgwOGE4ZWx5bmlodGY1YW9oZDB2cWw4cG9wbWY1OTV5bSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/li0dswKqIZNpm/giphy.gif"
                 };
             }
         }

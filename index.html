@@ -62,6 +62,7 @@
             border: 2px solid #a855f7; /* purple-500 */
             box-shadow: 0 0 15px rgba(168, 85, 247, 0.5);
         }
+        .badge-locked { filter: grayscale(1); opacity: 0.5; }
     </style>
 </head>
 <body class="min-h-screen p-4 flex items-center justify-center">
@@ -85,7 +86,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, setDoc, addDoc, collection, getDocs, query, where, updateDoc, onSnapshot, deleteDoc, writeBatch, serverTimestamp, orderBy, increment, Timestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, setDoc, addDoc, collection, getDocs, query, where, updateDoc, onSnapshot, deleteDoc, writeBatch, serverTimestamp, orderBy, increment, Timestamp, arrayUnion } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- IMPORTANT: PASTE YOUR FIREBASE CONFIGURATION HERE ---
         const firebaseConfig = {
@@ -209,6 +210,7 @@
                 'import-past-results-btn': handleImportPastResultsModal,
                 'edit-past-result-btn': () => handlePastResultModal(target.dataset.id),
                 'delete-past-result-btn': () => handleDeletePastResult(target.dataset.id),
+                'show-achievements-btn': () => handleAchievementsModal(target.dataset.studentId),
             };
 
             const actionKey = Object.keys(actionMap).find(key => target.id === key || target.classList.contains(key));
@@ -335,6 +337,7 @@
                 if (tabName === 'messages') renderMessagesTab();
                 if (tabName === 'epic-works') renderEpicWorksTab();
                 if (tabName === 'past-results') renderPastResultsTab();
+                if (tabName === 'stats') renderStatsTab();
             }
         }
         
@@ -344,7 +347,8 @@
                 name: form.querySelector('#student-name').value,
                 matricula: form.querySelector('#student-matricula').value,
                 turma: form.querySelector('#student-turma').value.trim(),
-                teacherId: currentTeacher.uid
+                teacherId: currentTeacher.uid,
+                unlockedBadges: [] // Initialize badges
             };
             if(!studentData.name || !studentData.matricula || !studentData.turma) return showAlert('Preencha todos os campos.', 'error');
 
@@ -415,10 +419,12 @@
             const inputs = form.querySelectorAll('.grade-input');
             const batch = writeBatch(db);
             let changesCount = 0;
+            const updatedStudentIds = [];
 
             for (const input of inputs) {
                 const studentId = input.dataset.studentId;
                 const newScore = parseInt(input.value, 10);
+                const feedback = form.querySelector(`#feedback-${studentId}`).value.trim();
 
                 if (!isNaN(newScore)) {
                     const submissionId = `${studentId}_${questId}`;
@@ -428,25 +434,34 @@
                     const submissionDoc = await getDoc(submissionRef);
                     const originalScore = submissionDoc.exists() ? submissionDoc.data().score : 0;
                     
-                    if(newScore !== originalScore) {
+                    if(newScore !== originalScore || feedback) {
                         changesCount++;
                         batch.set(submissionRef, {
-                            studentId, questId, score: newScore, status: 'completed', teacherId: currentTeacher.uid
+                            studentId, questId, score: newScore, status: 'completed', teacherId: currentTeacher.uid, feedback: feedback || ""
                         }, { merge: true });
 
                         const xpDifference = newScore - originalScore;
-                        batch.update(studentRef, { totalXP: increment(xpDifference) });
+                        if (xpDifference !== 0) {
+                            batch.update(studentRef, { totalXP: increment(xpDifference) });
+                        }
+                        if (!updatedStudentIds.includes(studentId)) {
+                            updatedStudentIds.push(studentId);
+                        }
                     }
                 }
             }
 
-            if (changesCount === 0) return showAlert('Nenhuma nota foi alterada.');
+            if (changesCount === 0) return showAlert('Nenhuma nota ou feedback foi alterado.');
 
             try {
                 await batch.commit();
-                showAlert('Notas salvas com sucesso!');
+                showAlert('Notas e feedbacks salvos com sucesso!');
                 hideModal();
-            } catch(error) { showAlert(`Erro ao salvar as notas: ${error.message}`, 'error'); }
+                // Check for new badges for each updated student
+                for (const studentId of updatedStudentIds) {
+                    await checkAndAwardBadges(studentId);
+                }
+            } catch(error) { showAlert(`Erro ao salvar: ${error.message}`, 'error'); }
         }
 
         async function handleMessageFormSubmit(form) {
@@ -499,7 +514,8 @@
                         turma: values[2],
                         teacherId: currentTeacher.uid,
                         totalXP: 0,
-                        lastSeenXP: 0
+                        lastSeenXP: 0,
+                        unlockedBadges: []
                     };
                     const newStudentRef = doc(collection(db, "students"));
                     batch.set(newStudentRef, studentData);
@@ -584,6 +600,12 @@
                     showAlert('Trabalho Épico registrado com sucesso!');
                 }
                 hideModal();
+
+                // Award badge for epic work
+                for(const studentId of studentIds) {
+                    await checkAndAwardBadges(studentId, { isEpic: true });
+                }
+
             } catch (error) {
                 showAlert(`Erro ao salvar Trabalho Épico: ${error.message}`, 'error');
             }
@@ -622,6 +644,7 @@
 
                     const batch = writeBatch(db);
                     let processedCount = 0;
+                    const updatedStudentIds = [];
 
                     const allStudentsQuery = query(collection(db, "students"), where("teacherId", "==", currentTeacher.uid));
                     const studentsSnapshot = await getDocs(allStudentsQuery);
@@ -653,11 +676,14 @@
                                 const xpDifference = newScore - originalScore;
 
                                 batch.set(submissionRef, {
-                                    studentId, questId, score: newScore, status: 'completed', teacherId: currentTeacher.uid
+                                    studentId, questId, score: newScore, status: 'completed', teacherId: currentTeacher.uid, feedback: ""
                                 }, { merge: true });
                                 
                                 if (xpDifference !== 0) {
                                     batch.update(studentRef, { totalXP: increment(xpDifference) });
+                                }
+                                if (!updatedStudentIds.includes(studentId)) {
+                                    updatedStudentIds.push(studentId);
                                 }
                                 processedCount++;
                             }
@@ -665,6 +691,11 @@
                     }
 
                     await batch.commit();
+                    
+                    for (const studentId of updatedStudentIds) {
+                       await checkAndAwardBadges(studentId);
+                    }
+
                     loadingSpinner.style.display = 'none';
                     showAlert(`${processedCount} notas importadas com sucesso!`);
                     hideModal();
@@ -907,7 +938,7 @@
                 const listContainer = document.getElementById('epic-works-list');
 
                 if (snapshot.empty) {
-                    listContainer.innerHTML = '<p class="text-gray-400 col-span-full text-center">Nenhum trabalho épico registrado ainda.</p>';
+                    listContainer.innerHTML = '<p class="text-center text-gray-400">Nenhum trabalho épico registrado ainda.</p>';
                     return;
                 }
                 
@@ -1010,6 +1041,7 @@
                             <a href="#" data-tab="quests" class="teacher-tab whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">Gerenciar Quests</a>
                             <a href="#" data-tab="epic-works" class="teacher-tab whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">Trabalhos Épicos</a>
                             <a href="#" data-tab="past-results" class="teacher-tab whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">Resultados Anteriores</a>
+                            <a href="#" data-tab="stats" class="teacher-tab whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">Estatísticas</a>
                             <a href="#" data-tab="messages" class="teacher-tab whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm">Enviar Mensagens</a>
                         </nav>
                     </div>
@@ -1017,6 +1049,7 @@
                     <div id="tab-content-quests" class="teacher-tab-content"></div>
                     <div id="tab-content-epic-works" class="teacher-tab-content"></div>
                     <div id="tab-content-past-results" class="teacher-tab-content"></div>
+                    <div id="tab-content-stats" class="teacher-tab-content"></div>
                     <div id="tab-content-messages" class="teacher-tab-content"></div>`;
             }
 
@@ -1038,101 +1071,7 @@
             }
 
             const motivationalPhrases = [
-                "Acredite em você mesmo e em tudo que você é. Saiba que há algo dentro de você que é maior que qualquer obstáculo.",
-                "O sucesso é a soma de pequenos esforços repetidos dia após dia.",
-                "Não tenha medo de desistir do bom para perseguir o ótimo.",
-                "A única maneira de fazer um ótimo trabalho é amar o que você faz.",
-                "Oportunidades não surgem. Você as cria.",
-                "O segredo para ir em frente é começar.",
-                "A persistência realiza o impossível.",
-                "O futuro pertence àqueles que acreditam na beleza de seus sonhos.",
-                "Nossa maior fraqueza está em desistir. O caminho mais certo de vencer é tentar mais uma vez.",
-                "A vida é 10% o que acontece comigo e 90% de como eu reajo a isso.",
-                "Para ter sucesso, o seu desejo de sucesso deve ser maior do que o seu medo do fracasso.",
-                "Um objetivo sem um plano é apenas um desejo.",
-                "A jornada de mil milhas começa com um único passo.",
-                "Faça o seu melhor. O que você planta agora, colherá mais tarde.",
-                "A disciplina é a ponte entre metas e realizações.",
-                "Seja a mudança que você quer ver no mundo.",
-                "A coragem não é a ausência do medo, mas a decisão de que algo é mais importante que o medo.",
-                "Nunca é tarde demais para ser o que você poderia ter sido.",
-                "Você erra 100% dos chutes que não dá.",
-                "Acreditar é a força que nos permite subir os maiores degraus na escada da vida.",
-                "Sonhe. Acredite. Conquiste.",
-                "Cair sete vezes, levantar-se oito.",
-                "Tudo o que um sonho precisa para ser realizado é alguém que acredite que ele possa ser realizado.",
-                "Comece onde você está. Use o que você tem. Faça o que você pode.",
-                "A inspiração existe, mas ela precisa te encontrar trabalhando.",
-                "Não espere por uma crise para descobrir o que é importante em sua vida.",
-                "O único lugar onde o sucesso vem antes do trabalho é no dicionário.",
-                "Grandes coisas nunca vêm de zonas de conforto.",
-                "A dificuldade de hoje é a força de amanhã.",
-                "Se a mente de um homem pode concebê-lo e acreditar, ele pode alcançá-lo.",
-                "O otimismo é a fé em ação. Nada se pode levar a efeito sem otimismo.",
-                "A felicidade não é algo pronto. Ela vem de suas próprias ações.",
-                "Quanto mais eu trabalho, mais sorte eu pareço ter.",
-                "A melhor vingança é um sucesso estrondoso.",
-                "A vida encolhe ou se expande na proporção da sua coragem.",
-                "Não é o que você olha que importa, é o que você vê.",
-                "Um homem criativo é motivado pelo desejo de alcançar, não pelo desejo de vencer os outros.",
-                "O conhecimento é poder.",
-                "A melhor maneira de prever o futuro é criá-lo.",
-                "Acredite que você pode, assim você já está no meio do caminho.",
-                "Seus limites são apenas aqueles que você impõe a si mesmo.",
-                "O fracasso é o tempero que dá sabor ao sucesso.",
-                "A única coisa que fica entre você e seu sonho é a vontade de tentar e a crença de que é realmente possível.",
-                "O que não te desafia, não te transforma.",
-                "A excelência não é um ato, mas um hábito.",
-                "A paciência é um elemento fundamental do sucesso.",
-                "Aja como se o que você faz, fizesse a diferença. Porque faz.",
-                "A força não vem da capacidade física, e sim de uma vontade indomável.",
-                "Não conte os dias, faça os dias contarem.",
-                "Pequenas oportunidades são muitas vezes o começo de grandes empreendimentos.",
-                "“Com grandes poderes, vêm grandes responsabilidades.” - Homem-Aranha",
-                "“Que a Força esteja com você.” - Star Wars",
-                "“Eu sou o Homem de Ferro.” - Homem de Ferro",
-                "“Por que caímos? Para que possamos aprender a nos levantar.” - Batman Begins",
-                "“Até a noite mais escura terminará e o sol nascerá.” - Os Miseráveis",
-                "“A vida se move muito rápido. Se você não parar e olhar ao redor de vez em quando, pode perdê-la.” - Curtindo a Vida Adoidado",
-                "“Nossos destinos vivem dentro de nós. Você só precisa ser corajoso o suficiente para vê-los.” - Valente",
-                "“Faça ou não faça. Tentativa não há.” - Mestre Yoda, Star Wars",
-                "“Eu sou inevitável.” - Thanos",
-                "“A flor que desabrocha na adversidade é a mais rara e bonita de todas.” - Mulan",
-                "“Hoje é o primeiro dia do resto da sua vida.”",
-                "“A persistência é o caminho do êxito.” - Charles Chaplin",
-                "“O que sabemos é uma gota; o que ignoramos é um oceano.” - Isaac Newton",
-                "“A imaginação é mais importante que o conhecimento.” - Albert Einstein",
-                "“A vida é como andar de bicicleta. Para manter o equilíbrio, você deve continuar se movendo.” - Albert Einstein",
-                "“Seja você mesmo; todos os outros já existem.” - Oscar Wilde",
-                "“Transforme suas feridas em sabedoria.” - Oprah Winfrey",
-                "“Não julgue cada dia pela colheita que você obtém, mas pelas sementes que você planta.”",
-                "“A única coisa que temos a temer é o próprio medo.” - Franklin D. Roosevelt",
-                "“A questão não é quem vai me deixar; é quem vai me impedir.” - Ayn Rand",
-                "“O sucesso não é definitivo, o fracasso não é fatal: é a coragem de continuar que conta.” - Winston Churchill",
-                "“Tudo o que você pode imaginar é real.” - Pablo Picasso",
-                "“A simplicidade é o último grau de sofisticação.” - Leonardo da Vinci",
-                "“Não são os nossos dons que mostram quem realmente somos. São as nossas escolhas.” - Dumbledore, Harry Potter",
-                "“Um dia de cada vez, que é pra não perder as boas surpresas da vida.” - Clarice Lispector",
-                "“O tempo não para.” - Cazuza",
-                "“A vida é curta, a arte é longa.” - Hipócrates",
-                "“Tenho em mim todos os sonhos do mundo.” - Fernando Pessoa",
-                "“A arte de ser sábio é a arte de saber o que ignorar.” - William James",
-                "“Seja a energia que você quer atrair.”",
-                "“Você não pode voltar atrás e mudar o começo, mas pode começar onde está e mudar o final.” - C.S. Lewis",
-                "“Continue nadando.” - Procurando Nemo",
-                "“As coisas boas vêm para aqueles que esperam.”",
-                "“O conhecimento fala, mas a sabedoria escuta.” - Jimi Hendrix",
-                "“A mente que se abre a uma nova ideia jamais voltará ao seu tamanho original.” - Albert Einstein",
-                "“Somos o que repetidamente fazemos. A excelência, portanto, não é um feito, mas um hábito.” - Aristóteles",
-                "“O importante é não parar de questionar.” - Albert Einstein",
-                "“A vida é o que acontece enquanto você está ocupado fazendo outros planos.” - John Lennon",
-                "“Tudo o que você precisa é amor.” - The Beatles",
-                "“E, no final, o amor que você recebe é igual ao amor que você faz.” - The Beatles",
-                "“Você pode dizer que eu sou um sonhador, mas eu não sou o único.” - John Lennon",
-                "“Quem olha para fora, sonha; quem olha para dentro, desperta.” - Carl Jung",
-                "“O que quer que você seja, seja um bom.” - Abraham Lincoln",
-                "“O impossível é o fantasma dos tímidos e o refúgio dos covardes.” - Napoleão Bonaparte",
-                "“A dúvida é o princípio da sabedoria.” - Aristóteles",
+                "Acredite em você mesmo e em tudo que você é. Saiba que há algo dentro de você que é maior que qualquer obstáculo.", "O sucesso é a soma de pequenos esforços repetidos dia após dia.", "Não tenha medo de desistir do bom para perseguir o ótimo.", "A única maneira de fazer um ótimo trabalho é amar o que você faz.", "Oportunidades não surgem. Você as cria.", "O segredo para ir em frente é começar.", "A persistência realiza o impossível.", "O futuro pertence àqueles que acreditam na beleza de seus sonhos.", "Nossa maior fraqueza está em desistir. O caminho mais certo de vencer é tentar mais uma vez.", "A vida é 10% o que acontece comigo e 90% de como eu reajo a isso.", "Para ter sucesso, o seu desejo de sucesso deve ser maior do que o seu medo do fracasso.", "Um objetivo sem um plano é apenas um desejo.", "A jornada de mil milhas começa com um único passo.", "Faça o seu melhor. O que você planta agora, colherá mais tarde.", "A disciplina é a ponte entre metas e realizações.", "Seja a mudança que você quer ver no mundo.", "A coragem não é a ausência do medo, mas a decisão de que algo é mais importante que o medo.", "Nunca é tarde demais para ser o que você poderia ter sido.", "Você erra 100% dos chutes que não dá.", "Acreditar é a força que nos permite subir os maiores degraus na escada da vida.", "Sonhe. Acredite. Conquiste.", "Cair sete vezes, levantar-se oito.", "Tudo o que um sonho precisa para ser realizado é alguém que acredite que ele possa ser realizado.", "Comece onde você está. Use o que você tem. Faça o que você pode.", "A inspiração existe, mas ela precisa te encontrar trabalhando.", "Não espere por uma crise para descobrir o que é importante em sua vida.", "O único lugar onde o sucesso vem antes do trabalho é no dicionário.", "Grandes coisas nunca vêm de zonas de conforto.", "A dificuldade de hoje é a força de amanhã.", "Se a mente de um homem pode concebê-lo e acreditar, ele pode alcançá-lo.", "O otimismo é a fé em ação. Nada se pode levar a efeito sem otimismo.", "A felicidade não é algo pronto. Ela vem de suas próprias ações.", "Quanto mais eu trabalho, mais sorte eu pareço ter.", "A melhor vingança é um sucesso estrondoso.", "A vida encolhe ou se expande na proporção da sua coragem.", "Não é o que você olha que importa, é o que você vê.", "Um homem criativo é motivado pelo desejo de alcançar, não pelo desejo de vencer os outros.", "O conhecimento é poder.", "A melhor maneira de prever o futuro é criá-lo.", "Acredite que você pode, assim você já está no meio do caminho.", "Seus limites são apenas aqueles que você impõe a si mesmo.", "O fracasso é o tempero que dá sabor ao sucesso.", "A única coisa que fica entre você e seu sonho é a vontade de tentar e a crença de que é realmente possível.", "O que não te desafia, não te transforma.", "A excelência não é um ato, mas um hábito.", "A paciência é um elemento fundamental do sucesso.", "Aja como se o que você faz, fizesse a diferença. Porque faz.", "A força não vem da capacidade física, e sim de uma vontade indomável.", "Não conte os dias, faça os dias contarem.", "Pequenas oportunidades são muitas vezes o começo de grandes empreendimentos.", "“Com grandes poderes, vêm grandes responsabilidades.” - Homem-Aranha", "“Que a Força esteja com você.” - Star Wars", "“Eu sou o Homem de Ferro.” - Homem de Ferro", "“Por que caímos? Para que possamos aprender a nos levantar.” - Batman Begins", "“Até a noite mais escura terminará e o sol nascerá.” - Os Miseráveis", "“A vida se move muito rápido. Se você não parar e olhar ao redor de vez em quando, pode perdê-la.” - Curtindo a Vida Adoidado", "“Nossos destinos vivem dentro de nós. Você só precisa ser corajoso o suficiente para vê-los.” - Valente", "“Faça ou não faça. Tentativa não há.” - Mestre Yoda, Star Wars", "“Eu sou inevitável.” - Thanos", "“A flor que desabrocha na adversidade é a mais rara e bonita de todas.” - Mulan", "“Hoje é o primeiro dia do resto da sua vida.”", "“A persistência é o caminho do êxito.” - Charles Chaplin", "“O que sabemos é uma gota; o que ignoramos é um oceano.” - Isaac Newton", "“A imaginação é mais importante que o conhecimento.” - Albert Einstein", "“A vida é como andar de bicicleta. Para manter o equilíbrio, você deve continuar se movendo.” - Albert Einstein", "“Seja você mesmo; todos os outros já existem.” - Oscar Wilde", "“Transforme suas feridas em sabedoria.” - Oprah Winfrey", "“Não julgue cada dia pela colheita que você obtém, mas pelas sementes que você planta.”", "“A única coisa que temos a temer é o próprio medo.” - Franklin D. Roosevelt", "“A questão não é quem vai me deixar; é quem vai me impedir.” - Ayn Rand", "“O sucesso não é definitivo, o fracasso não é fatal: é a coragem de continuar que conta.” - Winston Churchill", "“Tudo o que você pode imaginar é real.” - Pablo Picasso", "“A simplicidade é o último grau de sofisticação.” - Leonardo da Vinci", "“Não são os nossos dons que mostram quem realmente somos. São as nossas escolhas.” - Dumbledore, Harry Potter", "“Um dia de cada vez, que é pra não perder as boas surpresas da vida.” - Clarice Lispector", "“O tempo não para.” - Cazuza", "“A vida é curta, a arte é longa.” - Hipócrates", "“Tenho em mim todos os sonhos do mundo.” - Fernando Pessoa", "“A arte de ser sábio é a arte de saber o que ignorar.” - William James", "“Seja a energia que você quer atrair.”", "“Você não pode voltar atrás e mudar o começo, mas pode começar onde está e mudar o final.” - C.S. Lewis", "“Continue nadando.” - Procurando Nemo", "“As coisas boas vêm para aqueles que esperam.”", "“O conhecimento fala, mas a sabedoria escuta.” - Jimi Hendrix", "“A mente que se abre a uma nova ideia jamais voltará ao seu tamanho original.” - Albert Einstein", "“Somos o que repetidamente fazemos. A excelência, portanto, não é um feito, mas um hábito.” - Aristóteles", "“O importante é não parar de questionar.” - Albert Einstein", "“A vida é o que acontece enquanto você está ocupado fazendo outros planos.” - John Lennon", "“Tudo o que você precisa é amor.” - The Beatles", "“E, no final, o amor que você recebe é igual ao amor que você faz.” - The Beatles", "“Você pode dizer que eu sou um sonhador, mas eu não sou o único.” - John Lennon", "“Quem olha para fora, sonha; quem olha para dentro, desperta.” - Carl Jung", "“O que quer que você seja, seja um bom.” - Abraham Lincoln", "“O impossível é o fantasma dos tímidos e o refúgio dos covardes.” - Napoleão Bonaparte", "“A dúvida é o princípio da sabedoria.” - Aristóteles",
             ];
             const phrase = motivationalPhrases[Math.floor(Math.random() * motivationalPhrases.length)];
 
@@ -1142,7 +1081,8 @@
                         <h1 class="font-game text-2xl md:text-3xl text-cyan-400">Jornada de ${studentData.name.split(' ')[0]}</h1>
                         <p id="student-level" class="text-lg text-lime-400 ${levelUpClass}"><i class="fas fa-star mr-2"></i>XP Total: ${studentData.totalXP || 0}</p>
                     </div>
-                    <div class="flex items-center gap-4">
+                    <div class="flex items-center gap-4 mt-4 sm:mt-0">
+                        <button id="show-achievements-btn" data-student-id="${studentId}" class="bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-2 px-4 rounded-lg"><i class="fas fa-trophy mr-2"></i>Conquistas</button>
                         <button id="show-past-results-btn" data-student-id="${studentId}" class="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg"><i class="fas fa-history mr-2"></i>Períodos Anteriores</button>
                         <button id="student-logout-btn" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg"><i class="fas fa-sign-out-alt mr-2"></i>Sair da Jornada</button>
                     </div>
@@ -1442,7 +1382,7 @@
             const studentSubmissions = {};
             submissionsSnapshot.forEach(doc => {
                 const data = doc.data();
-                studentSubmissions[data.questId] = { score: data.score, status: data.status };
+                studentSubmissions[data.questId] = { score: data.score, status: data.status, feedback: data.feedback };
             });
 
             const epicWorksQuery = query(collection(db, "epicWorks"), where("studentIds", "array-contains", studentId));
@@ -1463,10 +1403,14 @@
                 let icon = 'fa-hourglass-half text-yellow-400';
                 let xpText = `Vale até ${quest.maxXp} XP`;
                 let epicClass = isEpic ? 'epic-highlight' : '';
+                let feedbackHTML = '';
 
                 if (submission) {
                     icon = isEpic ? 'fa-meteor text-purple-400' : 'fa-check-circle text-green-400';
                     xpText = `Você ganhou ${submission.score} XP`;
+                     if(submission.feedback) {
+                        feedbackHTML = `<div class="mt-2 p-2 bg-gray-900 rounded-md text-sm italic"><strong>Feedback:</strong> ${submission.feedback}</div>`;
+                    }
                 } else if (quest.endDate.toDate() < new Date()) {
                     icon = 'fa-times-circle text-red-400';
                     xpText = `Você perdeu ${quest.maxXp} XP`;
@@ -1490,6 +1434,7 @@
                                 <span>Dificuldade: ${quest.difficulty}</span> | 
                                 <span>Prazo: ${quest.endDate.toDate().toLocaleDateString('pt-BR')}</span>
                             </div>
+                            ${feedbackHTML}
                         </div>
                     </div>`;
             }).join('') || '<p class="text-gray-400">Sua jornada começa em breve!</p>';
@@ -1631,15 +1576,18 @@
             const submissionsQuery = query(collection(db, "submissions"), where("questId", "==", questId));
             const submissionsSnapshot = await getDocs(submissionsQuery);
             const submissions = {};
-            submissionsSnapshot.forEach(s => submissions[s.data().studentId] = s.data().score);
+            submissionsSnapshot.forEach(s => submissions[s.data().studentId] = {score: s.data().score, feedback: s.data().feedback});
 
             const studentInputs = studentsInTurmas.map(sDoc => {
                 const student = {id: sDoc.id, ...sDoc.data()};
-                const score = submissions[student.id] || 0;
+                const submission = submissions[student.id] || { score: 0, feedback: ''};
                 return `
-                    <div class="flex justify-between items-center bg-gray-800 p-2 rounded">
-                        <label for="grade-${student.id}" class="text-gray-300">${student.name}</label>
-                        <input id="grade-${student.id}" type="number" data-student-id="${student.id}" value="${score}" class="grade-input w-24 bg-gray-700 p-1 rounded text-center">
+                    <div class="bg-gray-800 p-3 rounded-lg">
+                        <div class="flex justify-between items-center">
+                            <label for="grade-${student.id}" class="text-gray-300">${student.name}</label>
+                            <input id="grade-${student.id}" type="number" data-student-id="${student.id}" value="${submission.score}" class="grade-input w-24 bg-gray-700 p-1 rounded text-center">
+                        </div>
+                        <textarea id="feedback-${student.id}" class="w-full bg-gray-700 rounded-md p-2 mt-2 text-sm" placeholder="Feedback (opcional)...">${submission.feedback || ''}</textarea>
                     </div>
                 `;
             }).join('');

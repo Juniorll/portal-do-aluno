@@ -62,7 +62,6 @@
             border: 2px solid #a855f7; /* purple-500 */
             box-shadow: 0 0 15px rgba(168, 85, 247, 0.5);
         }
-        .badge-locked { filter: grayscale(1); opacity: 0.5; }
     </style>
 </head>
 <body class="min-h-screen p-4 flex items-center justify-center">
@@ -209,8 +208,7 @@
                 'add-past-result-btn': () => handlePastResultModal(null, target.dataset.studentId),
                 'import-past-results-btn': handleImportPastResultsModal,
                 'edit-past-result-btn': () => handlePastResultModal(target.dataset.id),
-                'delete-past-result-btn': () => handleDeletePastResult(target.dataset.id),
-                'show-achievements-btn': () => handleAchievementsModal(target.dataset.studentId),
+                'delete-past-result-btn': () => handleDeletePastResult(target.dataset.id)
             };
 
             const actionKey = Object.keys(actionMap).find(key => target.id === key || target.classList.contains(key));
@@ -347,8 +345,7 @@
                 name: form.querySelector('#student-name').value,
                 matricula: form.querySelector('#student-matricula').value,
                 turma: form.querySelector('#student-turma').value.trim(),
-                teacherId: currentTeacher.uid,
-                unlockedBadges: [] // Initialize badges
+                teacherId: currentTeacher.uid
             };
             if(!studentData.name || !studentData.matricula || !studentData.turma) return showAlert('Preencha todos os campos.', 'error');
 
@@ -419,12 +416,10 @@
             const inputs = form.querySelectorAll('.grade-input');
             const batch = writeBatch(db);
             let changesCount = 0;
-            const updatedStudentIds = [];
 
             for (const input of inputs) {
                 const studentId = input.dataset.studentId;
                 const newScore = parseInt(input.value, 10);
-                const feedback = form.querySelector(`#feedback-${studentId}`).value.trim();
 
                 if (!isNaN(newScore)) {
                     const submissionId = `${studentId}_${questId}`;
@@ -434,34 +429,25 @@
                     const submissionDoc = await getDoc(submissionRef);
                     const originalScore = submissionDoc.exists() ? submissionDoc.data().score : 0;
                     
-                    if(newScore !== originalScore || feedback) {
+                    if(newScore !== originalScore) {
                         changesCount++;
                         batch.set(submissionRef, {
-                            studentId, questId, score: newScore, status: 'completed', teacherId: currentTeacher.uid, feedback: feedback || ""
+                            studentId, questId, score: newScore, status: 'completed', teacherId: currentTeacher.uid
                         }, { merge: true });
 
                         const xpDifference = newScore - originalScore;
-                        if (xpDifference !== 0) {
-                            batch.update(studentRef, { totalXP: increment(xpDifference) });
-                        }
-                        if (!updatedStudentIds.includes(studentId)) {
-                            updatedStudentIds.push(studentId);
-                        }
+                        batch.update(studentRef, { totalXP: increment(xpDifference) });
                     }
                 }
             }
 
-            if (changesCount === 0) return showAlert('Nenhuma nota ou feedback foi alterado.');
+            if (changesCount === 0) return showAlert('Nenhuma nota foi alterada.');
 
             try {
                 await batch.commit();
-                showAlert('Notas e feedbacks salvos com sucesso!');
+                showAlert('Notas salvas com sucesso!');
                 hideModal();
-                // Check for new badges for each updated student
-                for (const studentId of updatedStudentIds) {
-                    await checkAndAwardBadges(studentId);
-                }
-            } catch(error) { showAlert(`Erro ao salvar: ${error.message}`, 'error'); }
+            } catch(error) { showAlert(`Erro ao salvar as notas: ${error.message}`, 'error'); }
         }
 
         async function handleMessageFormSubmit(form) {
@@ -514,8 +500,7 @@
                         turma: values[2],
                         teacherId: currentTeacher.uid,
                         totalXP: 0,
-                        lastSeenXP: 0,
-                        unlockedBadges: []
+                        lastSeenXP: 0
                     };
                     const newStudentRef = doc(collection(db, "students"));
                     batch.set(newStudentRef, studentData);
@@ -600,12 +585,6 @@
                     showAlert('Trabalho Épico registrado com sucesso!');
                 }
                 hideModal();
-
-                // Award badge for epic work
-                for(const studentId of studentIds) {
-                    await checkAndAwardBadges(studentId, { isEpic: true });
-                }
-
             } catch (error) {
                 showAlert(`Erro ao salvar Trabalho Épico: ${error.message}`, 'error');
             }
@@ -644,7 +623,6 @@
 
                     const batch = writeBatch(db);
                     let processedCount = 0;
-                    const updatedStudentIds = [];
 
                     const allStudentsQuery = query(collection(db, "students"), where("teacherId", "==", currentTeacher.uid));
                     const studentsSnapshot = await getDocs(allStudentsQuery);
@@ -676,14 +654,11 @@
                                 const xpDifference = newScore - originalScore;
 
                                 batch.set(submissionRef, {
-                                    studentId, questId, score: newScore, status: 'completed', teacherId: currentTeacher.uid, feedback: ""
+                                    studentId, questId, score: newScore, status: 'completed', teacherId: currentTeacher.uid
                                 }, { merge: true });
                                 
                                 if (xpDifference !== 0) {
                                     batch.update(studentRef, { totalXP: increment(xpDifference) });
-                                }
-                                if (!updatedStudentIds.includes(studentId)) {
-                                    updatedStudentIds.push(studentId);
                                 }
                                 processedCount++;
                             }
@@ -691,11 +666,6 @@
                     }
 
                     await batch.commit();
-                    
-                    for (const studentId of updatedStudentIds) {
-                       await checkAndAwardBadges(studentId);
-                    }
-
                     loadingSpinner.style.display = 'none';
                     showAlert(`${processedCount} notas importadas com sucesso!`);
                     hideModal();
@@ -706,97 +676,6 @@
                 }
             };
             reader.readAsText(file);
-        }
-
-        async function handlePastResultFormSubmit(form) {
-            const id = form.dataset.id;
-            const studentId = form.querySelector('#past-result-student-select').value;
-            const period = form.querySelector('#past-result-period').value.trim();
-            const grade = parseFloat(form.querySelector('#past-result-grade').value.replace(',', '.'));
-
-            if (!studentId || !period || isNaN(grade)) {
-                return showAlert('Preencha todos os campos corretamente.', 'error');
-            }
-
-            const resultData = { studentId, period, grade, teacherId: currentTeacher.uid };
-            
-            try {
-                if (id) {
-                    await updateDoc(doc(db, 'pastResults', id), resultData);
-                    showAlert('Resultado atualizado com sucesso!');
-                } else {
-                    await addDoc(collection(db, 'pastResults'), resultData);
-                    showAlert('Resultado anterior adicionado!');
-                }
-                hideModal();
-                renderPastResultsTab(); // Refresh the tab
-            } catch (error) {
-                 showAlert(`Erro ao salvar resultado: ${error.message}`, 'error');
-            }
-        }
-
-        async function handlePastResultImport(form) {
-            const file = form.querySelector('#csv-file-past-results').files[0];
-            if (!file) return showAlert('Por favor, selecione um arquivo.', 'error');
-
-            loadingSpinner.style.display = 'flex';
-            const reader = new FileReader();
-            reader.onload = async (event) => {
-                try {
-                    const csv = event.target.result;
-                    const lines = csv.split('\n').filter(line => line.trim() !== '');
-                    if (lines.length <= 1) {
-                        loadingSpinner.style.display = 'none';
-                        return showAlert('Arquivo CSV vazio ou com apenas cabeçalho.', 'error');
-                    }
-
-                    const header = lines[0].trim().split(',');
-                    if (header[0] !== 'matricula' || header[1] !== 'periodo' || header[2] !== 'nota_final') {
-                         loadingSpinner.style.display = 'none';
-                        return showAlert('Cabeçalho do CSV inválido. Use: matricula,periodo,nota_final', 'error');
-                    }
-
-                    const studentsQuery = query(collection(db, "students"), where("teacherId", "==", currentTeacher.uid));
-                    const studentsSnapshot = await getDocs(studentsQuery);
-                    const studentMap = new Map();
-                    studentsSnapshot.forEach(doc => studentMap.set(doc.data().matricula, doc.id));
-                    
-                    const batch = writeBatch(db);
-                    for (let i = 1; i < lines.length; i++) {
-                        const values = lines[i].trim().split(',');
-                        const matricula = values[0];
-                        const period = values[1];
-                        const grade = parseFloat(values[2].replace(',', '.'));
-                        const studentId = studentMap.get(matricula);
-
-                        if (studentId && period && !isNaN(grade)) {
-                            const newResultRef = doc(collection(db, "pastResults"));
-                            batch.set(newResultRef, { studentId, period, grade, teacherId: currentTeacher.uid });
-                        }
-                    }
-
-                    await batch.commit();
-                    loadingSpinner.style.display = 'none';
-                    showAlert('Resultados importados com sucesso!');
-                    hideModal();
-                    renderPastResultsTab();
-                } catch(e) {
-                    loadingSpinner.style.display = 'none';
-                    showAlert(`Erro ao importar: ${e.message}`, 'error');
-                }
-            };
-            reader.readAsText(file);
-        }
-
-        async function handleDeletePastResult(resultId) {
-            if (!window.confirm('Tem certeza que deseja apagar este resultado?')) return;
-            try {
-                await deleteDoc(doc(db, "pastResults", resultId));
-                showAlert('Resultado removido.');
-                renderPastResultsTab();
-            } catch (error) {
-                showAlert(`Erro ao apagar: ${error.message}`, 'error');
-            }
         }
         
         // --- VIEW & COMPONENT RENDERING (The HTML Generators) ---

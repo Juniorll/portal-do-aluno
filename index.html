@@ -420,6 +420,7 @@
             for (const input of inputs) {
                 const studentId = input.dataset.studentId;
                 const newScore = parseInt(input.value, 10);
+                const feedback = form.querySelector(`#feedback-${studentId}`).value.trim();
 
                 if (!isNaN(newScore)) {
                     const submissionId = `${studentId}_${questId}`;
@@ -429,25 +430,27 @@
                     const submissionDoc = await getDoc(submissionRef);
                     const originalScore = submissionDoc.exists() ? submissionDoc.data().score : 0;
                     
-                    if(newScore !== originalScore) {
+                    if(newScore !== originalScore || feedback) {
                         changesCount++;
                         batch.set(submissionRef, {
-                            studentId, questId, score: newScore, status: 'completed', teacherId: currentTeacher.uid
+                            studentId, questId, score: newScore, status: 'completed', teacherId: currentTeacher.uid, feedback: feedback || ""
                         }, { merge: true });
 
                         const xpDifference = newScore - originalScore;
-                        batch.update(studentRef, { totalXP: increment(xpDifference) });
+                        if (xpDifference !== 0) {
+                            batch.update(studentRef, { totalXP: increment(xpDifference) });
+                        }
                     }
                 }
             }
 
-            if (changesCount === 0) return showAlert('Nenhuma nota foi alterada.');
+            if (changesCount === 0) return showAlert('Nenhuma nota ou feedback foi alterado.');
 
             try {
                 await batch.commit();
-                showAlert('Notas salvas com sucesso!');
+                showAlert('Notas e feedbacks salvos com sucesso!');
                 hideModal();
-            } catch(error) { showAlert(`Erro ao salvar as notas: ${error.message}`, 'error'); }
+            } catch(error) { showAlert(`Erro ao salvar: ${error.message}`, 'error'); }
         }
 
         async function handleMessageFormSubmit(form) {
@@ -654,7 +657,7 @@
                                 const xpDifference = newScore - originalScore;
 
                                 batch.set(submissionRef, {
-                                    studentId, questId, score: newScore, status: 'completed', teacherId: currentTeacher.uid
+                                    studentId, questId, score: newScore, status: 'completed', teacherId: currentTeacher.uid, feedback: ""
                                 }, { merge: true });
                                 
                                 if (xpDifference !== 0) {

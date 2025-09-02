@@ -820,22 +820,44 @@
             renderEpicWorksShowcase();
         }
         
+        async function getRankingData() {
+            const questsSnapshot = await getDocs(collection(db, "quests"));
+            const studentsSnapshot = await getDocs(collection(db, "students"));
+
+            const xpPerTurma = {};
+            questsSnapshot.forEach(doc => {
+                const quest = doc.data();
+                quest.turmas.forEach(turma => {
+                    if (!xpPerTurma[turma]) {
+                        xpPerTurma[turma] = 0;
+                    }
+                    xpPerTurma[turma] += quest.maxXp;
+                });
+            });
+
+            const studentsData = studentsSnapshot.docs.map(doc => {
+                const student = { id: doc.id, ...doc.data() };
+                const totalTurmaXP = xpPerTurma[student.turma] || 0;
+                const aproveitamento = totalTurmaXP > 0 ? (student.totalXP / totalTurmaXP) * 100 : 0;
+                return { ...student, totalTurmaXP, aproveitamento };
+            });
+
+            return studentsData.sort((a, b) => b.aproveitamento - a.aproveitamento);
+        }
+
         async function renderTop5Podium() {
             const podiumContainer = document.getElementById('top-5-podium');
             if (!podiumContainer) return;
 
             try {
-                const q = query(collection(db, "students"));
-                const snapshot = await getDocs(q);
+                const rankedStudents = await getRankingData();
                 
-                if (snapshot.empty) {
+                if (rankedStudents.length === 0) {
                     podiumContainer.innerHTML = '<p class="text-gray-400">Ainda não há devs no ranking para o pódio.</p>';
                     return;
                 }
 
-                const students = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                const top5 = students.sort((a, b) => (b.totalXP || 0) - (a.totalXP || 0)).slice(0, 5);
-
+                const top5 = rankedStudents.slice(0, 5);
                 const podiumOrder = [1, 0, 2, 3, 4];
                 let podiumHTML = '';
 
@@ -857,7 +879,8 @@
                                 <div class="podium-rank ${rankColor}">${rank}</div>
                                 <div class="text-2xl mb-2">${icon}</div>
                                 <h3 class="font-bold text-lg truncate w-full">${student.name}</h3>
-                                <p class="font-game text-lime-400 text-sm">${student.totalXP || 0} XP</p>
+                                <p class="font-game text-lime-400 text-xl">${student.aproveitamento.toFixed(1)}%</p>
+                                <p class="text-xs text-gray-400">${student.totalXP || 0} / ${student.totalTurmaXP || 0} XP</p>
                             </div>`;
                     }
                 }
@@ -1405,32 +1428,34 @@
             if(!list) return;
             list.innerHTML = '<li>Carregando ranking...</li>';
 
-            let q;
-            if (filter === 'general') {
-                q = query(collection(db, "students"));
-            } else {
-                q = query(collection(db, "students"), where('turma', '==', filter));
-            }
+            try {
+                const rankedStudents = await getRankingData();
+                const studentsToDisplay = (filter === 'general')
+                    ? rankedStudents
+                    : rankedStudents.filter(s => s.turma === filter);
 
-            const snapshot = await getDocs(q);
-            if(snapshot.empty) {
-                list.innerHTML = '<li>Nenhum dev no ranking ainda.</li>';
-                return;
-            }
-            
-            const sortedDocs = snapshot.docs.sort((a,b) => (b.data().totalXP || 0) - (a.data().totalXP || 0));
+                if(studentsToDisplay.length === 0) {
+                    list.innerHTML = '<li>Nenhum dev no ranking ainda.</li>';
+                    return;
+                }
 
-            list.innerHTML = sortedDocs.map((doc, index) => {
-                const student = doc.data();
-                const isCurrentUser = doc.id === currentStudentId;
-                const highlightClass = isCurrentUser ? 'bg-cyan-500 bg-opacity-30' : '';
-                return `
-                    <li class="flex justify-between items-center p-2 rounded-lg ${highlightClass}">
-                        <span>${index + 1}. ${student.name}</span>
-                        <span class="font-bold text-lime-400">${student.totalXP || 0} XP</span>
-                    </li>
-                `;
-            }).join('');
+                list.innerHTML = studentsToDisplay.map((student, index) => {
+                    const isCurrentUser = student.id === currentStudentId;
+                    const highlightClass = isCurrentUser ? 'bg-cyan-500 bg-opacity-30' : '';
+                    return `
+                        <li class="flex justify-between items-center p-2 rounded-lg ${highlightClass}">
+                            <span class="truncate">${index + 1}. ${student.name}</span>
+                            <div class="text-right">
+                                <span class="font-bold text-lime-400">${student.aproveitamento.toFixed(1)}%</span>
+                                <span class="text-xs text-gray-400 block">${student.totalXP || 0}/${student.totalTurmaXP || 0} XP</span>
+                            </div>
+                        </li>
+                    `;
+                }).join('');
+            } catch (error) {
+                console.error("Error rendering leaderboard:", error);
+                list.innerHTML = '<li>Erro ao carregar ranking.</li>';
+            }
         }
         
         // --- Modal Rendering ---

@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -209,8 +210,6 @@
                 'import-past-results-btn': handleImportPastResultsModal,
                 'edit-past-result-btn': () => handlePastResultModal(target.dataset.id),
                 'delete-past-result-btn': () => handleDeletePastResult(target.dataset.id),
-                'reset-all-xp-btn': handleResetConfirmationModal,
-                'confirm-reset-xp': executeXpReset,
             };
 
             const actionKey = Object.keys(actionMap).find(key => target.id === key || target.classList.contains(key));
@@ -837,7 +836,7 @@
                             </div>
                             <div class="text-center my-4 text-gray-500">ou</div>
                             <div class="space-y-4">
-                                <input type="text" id="student-name-search" placeholder="Digite seu primeiro e ultimo nome" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-lime-500">
+                                <input type="text" id="student-name-search" placeholder="Digite seu nome completo" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-lime-500">
                                 <button id="search-student-btn" class="w-full bg-lime-500 hover:bg-lime-600 text-gray-900 font-bold py-3 px-4 rounded-lg transition-transform transform hover:scale-105">Encontrar Matrícula</button>
                                 <div id="student-search-result" class="text-center mt-4 text-yellow-400 font-semibold"></div>
                             </div>
@@ -861,20 +860,8 @@
         }
         
         async function getRankingData() {
-             let questsQuery, studentsQuery;
-
-            // If no teacher is logged in (public view on login page), get global data.
-            if (!currentTeacher) {
-                questsQuery = query(collection(db, "quests"));
-                studentsQuery = query(collection(db, "students"));
-            } else {
-            // If a teacher is logged in, get their specific data.
-                questsQuery = query(collection(db, "quests"), where("teacherId", "==", currentTeacher.uid));
-                studentsQuery = query(collection(db, "students"), where("teacherId", "==", currentTeacher.uid));
-            }
-            
-            const questsSnapshot = await getDocs(questsQuery);
-            const studentsSnapshot = await getDocs(studentsQuery);
+            const questsSnapshot = await getDocs(collection(db, "quests"));
+            const studentsSnapshot = await getDocs(collection(db, "students"));
 
             const xpPerTurma = {};
             questsSnapshot.forEach(doc => {
@@ -890,7 +877,7 @@
             const studentsData = studentsSnapshot.docs.map(doc => {
                 const student = { id: doc.id, ...doc.data() };
                 const totalTurmaXP = xpPerTurma[student.turma] || 0;
-                const aproveitamento = totalTurmaXP > 0 ? ((student.totalXP || 0) / totalTurmaXP) * 100 : 0;
+                const aproveitamento = totalTurmaXP > 0 ? (student.totalXP / totalTurmaXP) * 100 : 0;
                 return { ...student, totalTurmaXP, aproveitamento };
             });
 
@@ -1143,10 +1130,9 @@
             container.innerHTML = `
                 <div class="flex flex-wrap gap-4 justify-between items-center mb-4">
                   <h2 class="font-game text-xl text-cyan-400">Alunos / Devs</h2>
-                  <div class="flex gap-2 flex-wrap">
+                  <div class="flex gap-2">
                     <button id="import-students-btn" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg"><i class="fas fa-upload mr-2"></i>Importar</button>
-                    <button class="add-student-btn bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg"><i class="fas fa-plus mr-2"></i>Adicionar</button>
-                    <button id="reset-all-xp-btn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg"><i class="fas fa-bomb mr-2"></i>Zerar XP de Todos</button>
+                    <button class="add-student-btn" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg"><i class="fas fa-plus mr-2"></i>Adicionar</button>
                   </div>
                 </div>
                 <div id="students-list" class="glass-effect p-4 rounded-lg">Carregando...</div>`;
@@ -2080,4 +2066,3 @@
     </script>
 </body>
 </html>
-

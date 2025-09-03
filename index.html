@@ -209,6 +209,8 @@
                 'import-past-results-btn': handleImportPastResultsModal,
                 'edit-past-result-btn': () => handlePastResultModal(target.dataset.id),
                 'delete-past-result-btn': () => handleDeletePastResult(target.dataset.id),
+                'reset-all-xp-btn': handleResetConfirmationModal,
+                'confirm-reset-xp': executeXpReset,
             };
 
             const actionKey = Object.keys(actionMap).find(key => target.id === key || target.classList.contains(key));
@@ -859,8 +861,8 @@
         }
         
         async function getRankingData() {
-            const questsSnapshot = await getDocs(collection(db, "quests"));
-            const studentsSnapshot = await getDocs(collection(db, "students"));
+            const questsSnapshot = await getDocs(query(collection(db, "quests"), where("teacherId", "==", currentTeacher.uid)));
+            const studentsSnapshot = await getDocs(query(collection(db, "students"), where("teacherId", "==", currentTeacher.uid)));
 
             const xpPerTurma = {};
             questsSnapshot.forEach(doc => {
@@ -1132,6 +1134,7 @@
                   <div class="flex gap-2">
                     <button id="import-students-btn" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg"><i class="fas fa-upload mr-2"></i>Importar</button>
                     <button class="add-student-btn" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg"><i class="fas fa-plus mr-2"></i>Adicionar</button>
+                     <button id="reset-all-xp-btn" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg"><i class="fas fa-bomb mr-2"></i>Zerar XP de Todos</button>
                   </div>
                 </div>
                 <div id="students-list" class="glass-effect p-4 rounded-lg">Carregando...</div>`;
@@ -1880,109 +1883,109 @@
         }
 
         async function renderStatsTab() {
-    const container = document.getElementById('tab-content-stats');
-    if (!container) return;
-    container.innerHTML = `<div class="p-4"><p class="text-center">A calcular estatísticas...</p></div>`;
+            const container = document.getElementById('tab-content-stats');
+            if (!container) return;
+            container.innerHTML = `<div class="p-4"><p class="text-center">A calcular estatísticas...</p></div>`;
 
-    try {
-        // 1. Obter todos os dados necessários
-        const rankedStudents = await getRankingData();
-        const questsSnapshot = await getDocs(query(collection(db, "quests"), where("teacherId", "==", currentTeacher.uid)));
-        const submissionsSnapshot = await getDocs(query(collection(db, "submissions"), where("teacherId", "==", currentTeacher.uid)));
-        
-        const submissionsByQuest = {};
-        submissionsSnapshot.forEach(doc => {
-            const data = doc.data();
-            if (!submissionsByQuest[data.questId]) {
-                submissionsByQuest[data.questId] = [];
-            }
-            submissionsByQuest[data.questId].push(data.studentId);
-        });
+            try {
+                // 1. Obter todos os dados necessários
+                const rankedStudents = await getRankingData();
+                const questsSnapshot = await getDocs(query(collection(db, "quests"), where("teacherId", "==", currentTeacher.uid)));
+                const submissionsSnapshot = await getDocs(query(collection(db, "submissions"), where("teacherId", "==", currentTeacher.uid)));
+                
+                const submissionsByQuest = {};
+                submissionsSnapshot.forEach(doc => {
+                    const data = doc.data();
+                    if (!submissionsByQuest[data.questId]) {
+                        submissionsByQuest[data.questId] = [];
+                    }
+                    submissionsByQuest[data.questId].push(data.studentId);
+                });
 
-        // 2. Processar Dados por Turma
-        const turmas = {};
-        rankedStudents.forEach(student => {
-            if (!turmas[student.turma]) {
-                turmas[student.turma] = { students: [], totalAproveitamento: 0 };
-            }
-            turmas[student.turma].students.push(student);
-            turmas[student.turma].totalAproveitamento += student.aproveitamento;
-        });
+                // 2. Processar Dados por Turma
+                const turmas = {};
+                rankedStudents.forEach(student => {
+                    if (!turmas[student.turma]) {
+                        turmas[student.turma] = { students: [], totalAproveitamento: 0 };
+                    }
+                    turmas[student.turma].students.push(student);
+                    turmas[student.turma].totalAproveitamento += student.aproveitamento;
+                });
 
-        const turmasHTML = Object.keys(turmas).map(turma => {
-            const data = turmas[turma];
-            const media = data.students.length > 0 ? data.totalAproveitamento / data.students.length : 0;
-            return `
-                <div class="glass-effect p-4 rounded-lg">
-                    <h3 class="font-game text-lg text-cyan-400">${turma}</h3>
-                    <p>Aproveitamento Médio: <span class="font-bold text-xl text-lime-400">${media.toFixed(1)}%</span></p>
-                    <p>${data.students.length} Alunos / Devs</p>
-                </div>
-            `;
-        }).join('');
-
-        // 3. Processar Taxa de Entrega por Atividade
-        const questsHTML = questsSnapshot.docs.map(doc => {
-            const quest = { id: doc.id, ...doc.data() };
-            const entregas = submissionsByQuest[quest.id]?.length || 0;
-            const totalAlunos = rankedStudents.filter(s => quest.turmas.includes(s.turma)).length;
-            const taxaEntrega = totalAlunos > 0 ? (entregas / totalAlunos) * 100 : 0;
-            
-            return `
-                <div class="bg-gray-800 p-3 rounded-lg">
-                    <p class="font-semibold">${quest.title}</p>
-                    <div class="flex items-center gap-4 mt-2">
-                        <div class="w-full bg-gray-700 rounded-full h-2.5">
-                            <div class="bg-blue-500 h-2.5 rounded-full" style="width: ${taxaEntrega.toFixed(1)}%"></div>
+                const turmasHTML = Object.keys(turmas).map(turma => {
+                    const data = turmas[turma];
+                    const media = data.students.length > 0 ? data.totalAproveitamento / data.students.length : 0;
+                    return `
+                        <div class="glass-effect p-4 rounded-lg">
+                            <h3 class="font-game text-lg text-cyan-400">${turma}</h3>
+                            <p>Aproveitamento Médio: <span class="font-bold text-xl text-lime-400">${media.toFixed(1)}%</span></p>
+                            <p>${data.students.length} Alunos / Devs</p>
                         </div>
-                        <span class="text-sm font-bold text-blue-300">${taxaEntrega.toFixed(0)}%</span>
-                    </div>
-                     <p class="text-xs text-gray-400 mt-1">${entregas} de ${totalAlunos} alunos entregaram.</p>
-                </div>
-            `;
-        }).join('');
+                    `;
+                }).join('');
 
-        // 4. Processar Alunos em Risco (aproveitamento < 50%)
-        const alunosEmRisco = rankedStudents.filter(s => s.aproveitamento < 50);
-        const riscoHTML = alunosEmRisco.length > 0
-            ? alunosEmRisco.map(student => `
-                <li class="flex justify-between items-center bg-red-900 bg-opacity-30 p-2 rounded-lg">
-                    <span>${student.name} (${student.turma})</span>
-                    <span class="font-bold text-red-400">${student.aproveitamento.toFixed(1)}%</span>
-                </li>
-            `).join('')
-            : '<p class="text-gray-400">Nenhum aluno em risco no momento. Bom trabalho!</p>';
+                // 3. Processar Taxa de Entrega por Atividade
+                const questsHTML = questsSnapshot.docs.map(doc => {
+                    const quest = { id: doc.id, ...doc.data() };
+                    const entregas = submissionsByQuest[quest.id]?.length || 0;
+                    const totalAlunos = rankedStudents.filter(s => quest.turmas.includes(s.turma)).length;
+                    const taxaEntrega = totalAlunos > 0 ? (entregas / totalAlunos) * 100 : 0;
+                    
+                    return `
+                        <div class="bg-gray-800 p-3 rounded-lg">
+                            <p class="font-semibold">${quest.title}</p>
+                            <div class="flex items-center gap-4 mt-2">
+                                <div class="w-full bg-gray-700 rounded-full h-2.5">
+                                    <div class="bg-blue-500 h-2.5 rounded-full" style="width: ${taxaEntrega.toFixed(1)}%"></div>
+                                </div>
+                                <span class="text-sm font-bold text-blue-300">${taxaEntrega.toFixed(0)}%</span>
+                            </div>
+                             <p class="text-xs text-gray-400 mt-1">${entregas} de ${totalAlunos} alunos entregaram.</p>
+                        </div>
+                    `;
+                }).join('');
 
-        // 5. Montar o HTML final
-        container.innerHTML = `
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <div class="lg:col-span-3">
-                    <h2 class="font-game text-xl text-cyan-400 mb-4">Visão Geral das Turmas</h2>
-                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        ${turmasHTML || '<p>Nenhuma turma com alunos ainda.</p>'}
-                    </div>
-                </div>
+                // 4. Processar Alunos em Risco (aproveitamento < 50%)
+                const alunosEmRisco = rankedStudents.filter(s => s.aproveitamento < 50);
+                const riscoHTML = alunosEmRisco.length > 0
+                    ? alunosEmRisco.map(student => `
+                        <li class="flex justify-between items-center bg-red-900 bg-opacity-30 p-2 rounded-lg">
+                            <span>${student.name} (${student.turma})</span>
+                            <span class="font-bold text-red-400">${student.aproveitamento.toFixed(1)}%</span>
+                        </li>
+                    `).join('')
+                    : '<p class="text-gray-400">Nenhum aluno em risco no momento. Bom trabalho!</p>';
 
-                <div>
-                    <h2 class="font-game text-xl text-yellow-400 mb-4">Alunos em Risco</h2>
-                    <div class="glass-effect p-4 rounded-lg space-y-2">
-                        <ul class="space-y-2">${riscoHTML}</ul>
-                    </div>
-                </div>
+                // 5. Montar o HTML final
+                container.innerHTML = `
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <div class="lg:col-span-3">
+                            <h2 class="font-game text-xl text-cyan-400 mb-4">Visão Geral das Turmas</h2>
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                ${turmasHTML || '<p>Nenhuma turma com alunos ainda.</p>'}
+                            </div>
+                        </div>
 
-                <div class="lg:col-span-2">
-                    <h2 class="font-game text-xl text-blue-400 mb-4">Taxa de Entrega por Atividade</h2>
-                    <div class="glass-effect p-4 rounded-lg space-y-4 max-h-96 overflow-y-auto">
-                        ${questsHTML || '<p>Nenhuma atividade criada ainda.</p>'}
+                        <div>
+                            <h2 class="font-game text-xl text-yellow-400 mb-4">Alunos em Risco</h2>
+                            <div class="glass-effect p-4 rounded-lg space-y-2">
+                                <ul class="space-y-2">${riscoHTML}</ul>
+                            </div>
+                        </div>
+
+                        <div class="lg:col-span-2">
+                            <h2 class="font-game text-xl text-blue-400 mb-4">Taxa de Entrega por Atividade</h2>
+                            <div class="glass-effect p-4 rounded-lg space-y-4 max-h-96 overflow-y-auto">
+                                ${questsHTML || '<p>Nenhuma atividade criada ainda.</p>'}
+                            </div>
+                        </div>
                     </div>
-                </div>
-            </div>
-        `;
-    } catch (error) {
-        console.error("Erro ao carregar estatísticas:", error);
-        container.innerHTML = '<p class="text-red-500 text-center">Ocorreu um erro ao carregar as estatísticas. Tente novamente mais tarde.</p>';
-    }
-}
+                `;
+            } catch (error) {
+                console.error("Erro ao carregar estatísticas:", error);
+                container.innerHTML = '<p class="text-red-500 text-center">Ocorreu um erro ao carregar as estatísticas. Tente novamente mais tarde.</p>';
+            }
+        }
 
         async function handlePastResultModal(resultId = null, studentIdForNew = null) {
             let result = { studentId: studentIdForNew || '', period: '', grade: '', materia: ''};

@@ -254,6 +254,9 @@
             if (target.id === 'epic-quest-select') {
                 populateEpicStudentsSelect(target.value);
             }
+            if(target.id === 'past-results-subject-filter') {
+                filterPastResultsBySubject(target.value);
+            }
         }
         
         // --- HANDLER IMPLEMENTATIONS ---
@@ -404,12 +407,41 @@
         }
 
         async function handleDeleteQuest(questId) {
-            if (!window.confirm('Tem certeza que deseja remover esta Quest?')) return;
+            if (!window.confirm('Tem certeza que deseja remover esta Quest? Todas as notas associadas serão perdidas.')) return;
+            
             try {
-                await deleteDoc(doc(db, "quests", questId));
-                showAlert('Quest removida com sucesso.');
-            } catch (error) { showAlert(`Erro ao remover a Quest: ${error.message}`, 'error'); }
+                const batch = writeBatch(db);
+
+                // Find all submissions for this quest
+                const submissionsQuery = query(collection(db, "submissions"), where("questId", "==", questId));
+                const submissionsSnapshot = await getDocs(submissionsQuery);
+
+                const studentXpUpdates = new Map();
+
+                submissionsSnapshot.forEach(subDoc => {
+                    const submission = subDoc.data();
+                    const currentUpdate = studentXpUpdates.get(submission.studentId) || 0;
+                    studentXpUpdates.set(submission.studentId, currentUpdate - submission.score);
+                    batch.delete(subDoc.ref); // Delete submission
+                });
+
+                // Update totalXP for all affected students
+                for (const [studentId, xpChange] of studentXpUpdates.entries()) {
+                    const studentRef = doc(db, "students", studentId);
+                    batch.update(studentRef, { totalXP: increment(xpChange) });
+                }
+
+                // Delete the quest itself
+                const questRef = doc(db, "quests", questId);
+                batch.delete(questRef);
+
+                await batch.commit();
+                showAlert('Quest e todas as notas associadas foram removidas com sucesso.');
+            } catch (error) {
+                showAlert(`Erro ao remover a Quest: ${error.message}`, 'error');
+            }
         }
+
 
         async function handleGradingFormSubmit(form) {
             const questId = form.dataset.questId;
@@ -684,14 +716,15 @@
         async function handlePastResultFormSubmit(form) {
             const id = form.dataset.id;
             const studentId = form.querySelector('#past-result-student-select').value;
+            const materia = form.querySelector('#past-result-materia').value.trim();
             const period = form.querySelector('#past-result-period').value.trim();
             const grade = parseFloat(form.querySelector('#past-result-grade').value.replace(',', '.'));
 
-            if (!studentId || !period || isNaN(grade)) {
+            if (!studentId || !period || isNaN(grade) || !materia) {
                 return showAlert('Preencha todos os campos corretamente.', 'error');
             }
 
-            const resultData = { studentId, period, grade, teacherId: currentTeacher.uid };
+            const resultData = { studentId, period, grade, materia, teacherId: currentTeacher.uid };
             
             try {
                 if (id) {
@@ -724,9 +757,9 @@
                     }
 
                     const header = lines[0].trim().split(',');
-                    if (header[0] !== 'matricula' || header[1] !== 'periodo' || header[2] !== 'nota_final') {
+                    if (header[0] !== 'matricula' || header[1] !== 'periodo' || header[2] !== 'nota_final' || header[3] !== 'materia') {
                          loadingSpinner.style.display = 'none';
-                        return showAlert('Cabeçalho do CSV inválido. Use: matricula,periodo,nota_final', 'error');
+                        return showAlert('Cabeçalho do CSV inválido. Use: matricula,periodo,nota_final,materia', 'error');
                     }
 
                     const studentsQuery = query(collection(db, "students"), where("teacherId", "==", currentTeacher.uid));
@@ -740,11 +773,12 @@
                         const matricula = values[0];
                         const period = values[1];
                         const grade = parseFloat(values[2].replace(',', '.'));
+                        const materia = values[3];
                         const studentId = studentMap.get(matricula);
 
-                        if (studentId && period && !isNaN(grade)) {
+                        if (studentId && period && !isNaN(grade) && materia) {
                             const newResultRef = doc(collection(db, "pastResults"));
-                            batch.set(newResultRef, { studentId, period, grade, teacherId: currentTeacher.uid });
+                            batch.set(newResultRef, { studentId, period, grade, materia, teacherId: currentTeacher.uid });
                         }
                     }
 
@@ -1315,7 +1349,7 @@
                 const results = resultsByStudent[student.id] || [];
                 const resultsHTML = results.map(res => `
                     <div class="flex items-center justify-between bg-gray-900 p-2 rounded-md">
-                        <span>Período: <strong>${res.period}</strong> - Nota: <strong>${res.grade}</strong></span>
+                        <span> <strong>${res.materia || 'N/A'}</strong> (${res.period}) - Nota: <strong>${res.grade}</strong></span>
                         <div class="space-x-2">
                             <button data-id="${res.id}" class="edit-past-result-btn text-blue-400 hover:text-blue-300 text-xs"><i class="fas fa-pencil-alt"></i></button>
                             <button data-id="${res.id}" class="delete-past-result-btn text-red-500 hover:text-red-400 text-xs"><i class="fas fa-trash"></i></button>
@@ -1786,31 +1820,44 @@
             const q = query(collection(db, "pastResults"), where("studentId", "==", studentId));
             const snapshot = await getDocs(q);
             
-            let resultsHTML = '<p class="text-gray-400">Nenhum resultado de período anterior encontrado.</p>';
+            const results = snapshot.docs.map(doc => ({...doc.data()}));
+            const subjects = [...new Set(results.map(r => r.materia))];
             
-            if (!snapshot.empty) {
-                resultsHTML = snapshot.docs.map(doc => {
-                    const result = doc.data();
-                    const feedback = getGradeFeedback(result.grade);
-                    return `
+            let filterHTML = '';
+            if (subjects.length > 1) {
+                filterHTML = `
+                    <div class="mb-4">
+                        <select id="past-results-subject-filter" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2">
+                            <option value="all">Todas as Matérias</option>
+                            ${subjects.map(s => `<option value="${s}">${s}</option>`).join('')}
+                        </select>
+                    </div>
+                `;
+            }
+
+            const resultsHTML = results.map(result => {
+                const feedback = getGradeFeedback(result.grade);
+                return `
+                    <div class="past-result-item" data-subject="${result.materia}">
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 items-center bg-gray-800 p-4 rounded-lg">
                             <div>
-                                <h4 class="font-bold text-lg text-cyan-300">${result.period}</h4>
+                                <h4 class="font-bold text-lg text-cyan-300">${result.materia} (${result.period})</h4>
                                 <p class="font-game text-2xl text-lime-400 my-2">${result.grade.toFixed(1)}</p>
                                 <p class="text-sm italic text-gray-300">"${feedback.message}"</p>
                             </div>
                             <img src="${feedback.img}" alt="${feedback.message}" class="rounded-lg w-full max-w-xs mx-auto">
                         </div>
-                    `;
-                }).join('<div class="my-2 border-b border-gray-700"></div>');
-            }
+                    </div>
+                `;
+            }).join('<div class="my-2 border-b border-gray-700"></div>');
             
             const modalHTML = `
                 <div class="modal-backdrop">
                     <div class="modal-content glass-effect p-8 rounded-2xl">
                         <h3 class="font-game text-xl text-indigo-400 mb-6">Histórico de Batalhas (Resultados)</h3>
-                        <div class="space-y-4 max-h-[60vh] overflow-y-auto pr-4">
-                            ${resultsHTML}
+                        ${filterHTML}
+                        <div id="past-results-container" class="space-y-4 max-h-[60vh] overflow-y-auto pr-4">
+                            ${snapshot.empty ? '<p class="text-gray-400">Nenhum resultado de período anterior encontrado.</p>' : resultsHTML}
                         </div>
                          <div class="flex justify-end mt-8">
                             <button type="button" class="modal-close-btn bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-6 rounded-lg">Fechar</button>
@@ -1819,6 +1866,17 @@
                 </div>
             `;
             showModal(modalHTML);
+        }
+        
+        function filterPastResultsBySubject(subject) {
+            const items = document.querySelectorAll('.past-result-item');
+            items.forEach(item => {
+                if (subject === 'all' || item.dataset.subject === subject) {
+                    item.style.display = 'block';
+                } else {
+                    item.style.display = 'none';
+                }
+            });
         }
 
         async function renderStatsTab() {
@@ -1853,7 +1911,7 @@
 
         const turmasHTML = Object.keys(turmas).map(turma => {
             const data = turmas[turma];
-            const media = data.totalAproveitamento / data.students.length;
+            const media = data.students.length > 0 ? data.totalAproveitamento / data.students.length : 0;
             return `
                 <div class="glass-effect p-4 rounded-lg">
                     <h3 class="font-game text-lg text-cyan-400">${turma}</h3>
@@ -1927,7 +1985,7 @@
 }
 
         async function handlePastResultModal(resultId = null, studentIdForNew = null) {
-            let result = { studentId: studentIdForNew || '', period: '', grade: ''};
+            let result = { studentId: studentIdForNew || '', period: '', grade: '', materia: ''};
             
             if (resultId) {
                 const docSnap = await getDoc(doc(db, 'pastResults', resultId));
@@ -1960,6 +2018,10 @@
                                     </select>
                                 </div>
                                 <div>
+                                    <label for="past-result-materia" class="block mb-2 text-sm">Matéria</label>
+                                    <input type="text" id="past-result-materia" placeholder="Ex: Programação I" required class="w-full bg-gray-800 rounded-lg p-2" value="${result.materia}">
+                                </div>
+                                <div>
                                     <label for="past-result-period" class="block mb-2 text-sm">Período (ex: 2024/1)</label>
                                     <input type="text" id="past-result-period" placeholder="2024/1" required class="w-full bg-gray-800 rounded-lg p-2" value="${result.period}">
                                 </div>
@@ -1984,8 +2046,8 @@
                     <div class="modal-content glass-effect p-8 rounded-2xl">
                         <h3 class="font-game text-xl text-blue-400 mb-6">Importar Resultados Anteriores</h3>
                         <form id="import-past-results-form" class="space-y-4">
-                            <p class="text-gray-300">Selecione um arquivo CSV com as colunas: <code class="bg-gray-900 p-1 rounded">matricula,periodo,nota_final</code></p>
-                            <a href="data:text/csv;charset=utf-8,matricula,periodo,nota_final%0A12345,2024/1,8.5%0A67890,2024/1,9.0" download="template_resultados.csv" class="text-cyan-400 hover:underline">Descarregar modelo</a>
+                            <p class="text-gray-300">Selecione um arquivo CSV com as colunas: <code class="bg-gray-900 p-1 rounded">matricula,periodo,nota_final,materia</code></p>
+                            <a href="data:text/csv;charset=utf-8,matricula,periodo,nota_final,materia%0A12345,2024/1,8.5,Programacao%20I%0A67890,2024/1,9.0,Banco%20de%20Dados" download="template_resultados.csv" class="text-cyan-400 hover:underline">Descarregar modelo</a>
                             <input type="file" id="csv-file-past-results" accept=".csv" required class="w-full text-gray-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-500 file:text-white hover:file:bg-blue-600">
                              <div class="flex justify-end space-x-4 mt-8">
                                 <button type="button" class="modal-close-btn bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-6 rounded-lg">Cancelar</button>
@@ -2003,5 +2065,4 @@
     </script>
 </body>
 </html>
-
 
